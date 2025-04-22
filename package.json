@@ -1,0 +1,162 @@
+{
+  "name": "jupyterhub-remote-file-explorer",
+  "displayName": "jupyterhub-remote-file-explorer",
+  "description": "Displays the file system for a remote JupyterHub server and allows you to interact with objects directly from VSCode",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "jupyterhub-remote-file-explorer.connect",
+        "title": "Connect to JupyterHub",
+        "category": "JupyterHub"
+      },
+      {
+        "command": "jupyterhub-remote-file-explorer.disconnect",
+        "title": "Disconnect from JupyterHub",
+        "category": "JupyterHub"
+      },
+      {
+        "command": "jupyterhub-remote-file-explorer.refresh",
+        "title": "Refresh",
+        "category": "JupyterHub",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "jupyterhub-remote-file-explorer.forgetCredentials",
+        "title": "Forget Saved Credentials",
+        "category": "JupyterHub"
+      },
+      {
+        "command": "jupyterhub-remote-file-explorer.updateCredentials",
+        "title": "Update Credentials",
+        "category": "JupyterHub"
+      },
+      {
+        "command": "jupyterhub-remote-file-explorer.showConnectionStatus",
+        "title": "Show Connection Status",
+        "category": "JupyterHub"
+      },
+      {
+        "command": "jupyterhub-remote-file-explorer.manageConnections",
+        "title": "Manage Saved Connections",
+        "category": "JupyterHub"
+      },
+      {
+        "command": "jupyterhub-remote-file-explorer.createFile",
+        "title": "New File",
+        "category": "JupyterHub",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "jupyterhub-remote-file-explorer.createDirectory",
+        "title": "New Folder",
+        "category": "JupyterHub",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "jupyterhub-remote-file-explorer.deleteItem",
+        "title": "Delete",
+        "category": "JupyterHub",
+        "icon": "$(trash)"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "jupyterhubExplorer",
+          "name": "JupyterHub Explorer"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "jupyterhub-remote-file-explorer.connect",
+          "when": "view == jupyterhubExplorer"
+        },
+        {
+          "command": "jupyterhub-remote-file-explorer.disconnect",
+          "when": "view == jupyterhubExplorer"
+        },
+        {
+          "command": "jupyterhub-remote-file-explorer.refresh",
+          "when": "view == jupyterhubExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "jupyterhub-remote-file-explorer.createFile",
+          "when": "view == jupyterhubExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "jupyterhub-remote-file-explorer.createDirectory",
+          "when": "view == jupyterhubExplorer",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "jupyterhub-remote-file-explorer.createFile",
+          "when": "view == jupyterhubExplorer && viewItem == directory",
+          "group": "inline"
+        },
+        {
+          "command": "jupyterhub-remote-file-explorer.createDirectory",
+          "when": "view == jupyterhubExplorer && viewItem == directory",
+          "group": "inline"
+        },
+        {
+          "command": "jupyterhub-remote-file-explorer.deleteItem",
+          "when": "view == jupyterhubExplorer",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "JupyterHub Remote File Explorer",
+      "properties": {
+        "jupyterhub.rememberCredentials": {
+          "type": "boolean",
+          "default": true,
+          "description": "Remember JupyterHub server credentials"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.99.0",
+    "@typescript-eslint/eslint-plugin": "^8.28.0",
+    "@typescript-eslint/parser": "^8.28.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.23.0",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.8.2",
+    "webpack": "^5.98.0",
+    "webpack-cli": "^6.0.1"
+  },
+  "dependencies": {
+    "axios": "^1.8.4"
+  }
+}
