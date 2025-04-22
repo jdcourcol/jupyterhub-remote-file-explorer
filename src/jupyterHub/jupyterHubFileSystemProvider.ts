@@ -77,9 +77,12 @@ export class JupyterHubFileSystemProvider implements vscode.FileSystemProvider {
     // Read a file
     async readFile(uri: vscode.Uri): Promise<Uint8Array> {
         try {
+            console.log(`Reading file: ${uri.path}`);
+            
             // First check if we have a buffered version (for unsaved changes)
             const buffered = this._bufferedFiles.get(uri.toString());
             if (buffered) {
+                console.log(`Using buffered content for ${uri.path}`);
                 return buffered;
             }
             
@@ -88,12 +91,29 @@ export class JupyterHubFileSystemProvider implements vscode.FileSystemProvider {
             // JupyterHub API returns content in different formats based on the file type
             let data: Buffer;
             
+            console.log(`File format for ${uri.path}: ${content.format}`);
+            
             if (content.format === 'text') {
                 data = Buffer.from(content.content, 'utf8');
             } else if (content.format === 'base64') {
                 data = Buffer.from(content.content, 'base64');
             } else if (content.format === 'json') {
-                data = Buffer.from(JSON.stringify(content.content), 'utf8');
+                // For notebooks, we need to serialize the JSON content
+                if (uri.path.endsWith('.ipynb')) {
+                    try {
+                        // Content might already be an object if returned directly from API
+                        const jsonContent = typeof content.content === 'string' 
+                            ? JSON.parse(content.content) 
+                            : content.content;
+                        data = Buffer.from(JSON.stringify(jsonContent, null, 2), 'utf8');
+                    } catch (jsonError) {
+                        console.error(`Error parsing notebook JSON: ${jsonError}`);
+                        // Fall back to direct stringification if parsing fails
+                        data = Buffer.from(JSON.stringify(content.content), 'utf8');
+                    }
+                } else {
+                    data = Buffer.from(JSON.stringify(content.content), 'utf8');
+                }
             } else {
                 throw new Error(`Unsupported format: ${content.format}`);
             }
@@ -112,29 +132,40 @@ export class JupyterHubFileSystemProvider implements vscode.FileSystemProvider {
         options: { create: boolean; overwrite: boolean }
     ): Promise<void> {
         try {
+            console.log(`Writing file: ${uri.path}, size: ${content.byteLength} bytes, create: ${options.create}, overwrite: ${options.overwrite}`);
+            
             // Buffer the file content in memory for faster access
             this._bufferedFiles.set(uri.toString(), Buffer.from(content));
             
             // Convert buffer to string for Jupyter API
             const contentStr = Buffer.from(content).toString('utf8');
             
-            // Check if the file exists
+            // Try to create/update the file
             try {
-                await this.stat(uri);
-                // File exists, save it
-                await this.connection.saveFile(uri.path, contentStr);
-                this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
-            } catch (error) {
-                // File doesn't exist, create it if allowed
                 if (options.create) {
+                    // Always use createItem which now uses PUT for files
+                    console.log(`Creating new file via PUT: ${uri.path}`);
                     await this.connection.createItem(uri.path, 'file', contentStr);
                     this._emitter.fire([{ type: vscode.FileChangeType.Created, uri }]);
+                    vscode.window.setStatusBarMessage(`File ${uri.path} created successfully`, 3000);
                 } else {
-                    throw vscode.FileSystemError.FileNotFound();
+                    // Update existing file
+                    console.log(`Updating existing file: ${uri.path}`);
+                    await this.connection.saveFile(uri.path, contentStr);
+                    this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+                    vscode.window.setStatusBarMessage(`File ${uri.path} saved successfully`, 3000);
                 }
+            } catch (error) {
+                console.error(`Error creating/saving file: ${error}`);
+                throw error;
             }
         } catch (error) {
             console.error(`Error in writeFile for ${uri.path}:`, error);
+            
+            // Show detailed error message
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to save file ${uri.path}: ${errorMessage}`);
+            
             throw vscode.FileSystemError.Unavailable();
         }
     }

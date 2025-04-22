@@ -9,10 +9,17 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "jupyterhub-remote-file-explorer.helloWorld",
+        "title": "Hello World",
+        "category": "JupyterHub"
+      },
       {
         "command": "jupyterhub-remote-file-explorer.connect",
         "title": "Connect to JupyterHub",
@@ -123,10 +130,15 @@
     "configuration": {
       "title": "JupyterHub Remote File Explorer",
       "properties": {
-        "jupyterhub.rememberCredentials": {
+        "jupyterhub.autoConnect": {
           "type": "boolean",
-          "default": true,
-          "description": "Remember JupyterHub server credentials"
+          "default": false,
+          "description": "Automatically connect to the last used JupyterHub server on startup"
+        },
+        "jupyterhub.connectionTimeout": {
+          "type": "number",
+          "default": 10000,
+          "description": "Timeout (in milliseconds) for JupyterHub server connections"
         }
       }
     }

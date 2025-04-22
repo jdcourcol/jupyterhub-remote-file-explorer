@@ -34,11 +34,15 @@ export class JupyterHubConnection {
                 this.serverUrl = this.serverUrl.slice(0, -1);
             }
             
+            // Get timeout from configuration
+            const timeout = vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000);
+            
             // Validate connection by getting user info
             const response = await axios.get(`${this.serverUrl}/hub/api/user`, {
                 headers: {
                     'Authorization': `token ${this.token}`
-                }
+                },
+                timeout: timeout
             });
             
             if (response.status === 200 && response.data) {
@@ -53,11 +57,13 @@ export class JupyterHubConnection {
             console.error('Failed to connect to JupyterHub server:', error);
             
             // Check for unauthorized error - likely invalid or expired token
-            if (axios.isAxiosError(error) && error.response?.status === 401) {
+            if (this.isCredentialError(error)) {
                 vscode.window.showErrorMessage('JupyterHub credentials are invalid or expired. Please reconnect with new credentials.');
                 // Dispatch a custom event for credential invalidation
                 const invalidCredentialsEvent = new vscode.EventEmitter<void>();
                 vscode.commands.executeCommand('jupyterhub-remote-file-explorer.updateCredentials');
+            } else if (this.isTimeoutError(error)) {
+                vscode.window.showErrorMessage(`Connection to JupyterHub server timed out. Please check your network connection and server status.`);
             } else {
                 vscode.window.showErrorMessage(`Failed to connect to JupyterHub server: ${error instanceof Error ? error.message : String(error)}`);
             }
@@ -89,7 +95,8 @@ export class JupyterHubConnection {
             const response = await axios.get(`${this.apiBaseUrl}/contents${path}`, {
                 headers: {
                     'Authorization': `token ${this.token}`
-                }
+                },
+                timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
             });
             
             if (response.status === 200 && response.data) {
@@ -106,6 +113,9 @@ export class JupyterHubConnection {
                 this.isConnected = false;
                 vscode.commands.executeCommand('jupyterhub-remote-file-explorer.updateCredentials');
                 throw new Error('Invalid credentials');
+            } else if (this.isTimeoutError(error)) {
+                vscode.window.showErrorMessage(`Operation timed out. Please check your network connection and server status.`);
+                throw new Error('Connection timeout');
             }
             
             throw new Error(`Failed to list contents: ${error instanceof Error ? error.message : String(error)}`);
@@ -121,23 +131,59 @@ export class JupyterHubConnection {
         }
         
         try {
-            // Normalize path
+            // Normalize path - ensure it starts with a slash and remove any double slashes
             if (!path.startsWith('/')) {
                 path = `/${path}`;
             }
+            path = path.replace(/\/+/g, '/');
             
-            const response = await axios.get(`${this.apiBaseUrl}/contents${path}`, {
-                headers: {
-                    'Authorization': `token ${this.token}`,
-                    'Content-Type': 'application/json'
-                },
-                params: {
-                    content: 1
+            // For JupyterHub API, we might need to remove leading slash in some cases
+            // but we'll first try with the slash as is
+            const apiPath = path;
+            
+            console.log(`Getting file content from ${this.apiBaseUrl}/contents${apiPath}`);
+            
+            try {
+                const response = await axios.get(`${this.apiBaseUrl}/contents${apiPath}`, {
+                    headers: {
+                        'Authorization': `token ${this.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    params: {
+                        content: 1
+                    },
+                    timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+                });
+                
+                if (response.status === 200 && response.data) {
+                    console.log(`Successfully retrieved file content for ${path}, format: ${response.data.format}`);
+                    return response.data;
                 }
-            });
-            
-            if (response.status === 200 && response.data) {
-                return response.data;
+            } catch (error) {
+                // If path with leading slash fails, try without the leading slash
+                if (path.startsWith('/')) {
+                    const altPath = path.substring(1);
+                    console.log(`Primary request failed, trying alternate path: ${this.apiBaseUrl}/contents/${altPath}`);
+                    
+                    const altResponse = await axios.get(`${this.apiBaseUrl}/contents/${altPath}`, {
+                        headers: {
+                            'Authorization': `token ${this.token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        params: {
+                            content: 1
+                        },
+                        timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+                    });
+                    
+                    if (altResponse.status === 200 && altResponse.data) {
+                        console.log(`Successfully retrieved file content using alternate path for ${path}`);
+                        return altResponse.data;
+                    }
+                } else {
+                    // If we're here, the initial request failed and we've already tried the alternative
+                    throw error;
+                }
             }
             
             throw new Error('Failed to get file content');
@@ -150,6 +196,9 @@ export class JupyterHubConnection {
                 this.isConnected = false;
                 vscode.commands.executeCommand('jupyterhub-remote-file-explorer.updateCredentials');
                 throw new Error('Invalid credentials');
+            } else if (this.isTimeoutError(error)) {
+                vscode.window.showErrorMessage(`Operation timed out. Please check your network connection and server status.`);
+                throw new Error('Connection timeout');
             }
             
             throw new Error(`Failed to get file content: ${error instanceof Error ? error.message : String(error)}`);
@@ -165,10 +214,17 @@ export class JupyterHubConnection {
         }
         
         try {
+            // Normalize path
+            if (!path.startsWith('/')) {
+                path = `/${path}`;
+            }
+            
             // Get the directory and filename
             const lastSlashIndex = path.lastIndexOf('/');
             const directory = path.substring(0, lastSlashIndex) || '/';
             const name = path.substring(lastSlashIndex + 1);
+            
+            console.log(`Creating ${type} in directory "${directory}" with name "${name}"`);
             
             const data: any = {
                 type: type,
@@ -176,17 +232,41 @@ export class JupyterHubConnection {
             };
             
             if (type === 'file' && content !== undefined) {
-                data.content = content;
+                // Special handling for notebook files
+                if (name.endsWith('.ipynb')) {
+                    // Use JSON format for notebooks with proper structure
+                    data.format = 'json';
+                    data.content = {
+                        cells: [],
+                        metadata: {
+                            kernelspec: {
+                                display_name: "Python 3",
+                                language: "python",
+                                name: "python3"
+                            }
+                        },
+                        nbformat: 4,
+                        nbformat_minor: 4
+                    };
+                } else {
+                    // Regular text files
+                    data.content = content;
+                    data.format = 'text';
+                }
             }
+            
+            console.log(`POST request to ${this.apiBaseUrl}/contents${directory} with data:`, JSON.stringify(data));
             
             const response = await axios.post(`${this.apiBaseUrl}/contents${directory}`, data, {
                 headers: {
                     'Authorization': `token ${this.token}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
             });
             
             if (response.status === 201 && response.data) {
+                console.log(`${type} created successfully at: ${response.data.path || path}`);
                 return response.data;
             }
             
@@ -200,6 +280,15 @@ export class JupyterHubConnection {
                 this.isConnected = false;
                 vscode.commands.executeCommand('jupyterhub-remote-file-explorer.updateCredentials');
                 throw new Error('Invalid credentials');
+            } else if (this.isTimeoutError(error)) {
+                vscode.window.showErrorMessage(`Operation timed out. Please check your network connection and server status.`);
+                throw new Error('Connection timeout');
+            } else {
+                // Show detailed error message for debugging
+                const errorMessage = axios.isAxiosError(error) && error.response 
+                    ? `${error.message} (${error.response.status}: ${JSON.stringify(error.response.data)})`
+                    : `${error instanceof Error ? error.message : String(error)}`;
+                vscode.window.showErrorMessage(`Failed to create ${type}: ${errorMessage}`);
             }
             
             throw new Error(`Failed to create ${type}: ${error instanceof Error ? error.message : String(error)}`);
@@ -220,19 +309,28 @@ export class JupyterHubConnection {
                 path = `/${path}`;
             }
             
+            // First get the current file to maintain its format
+            const currentFile = await this.getFileContent(path);
+            
+            // Properly format the request according to JupyterHub API spec
             const data = {
                 content: content,
-                type: 'file'
+                type: 'file',
+                format: 'text'  // Explicitly set format to text
             };
+            
+            console.log(`Saving file ${path} with content length: ${content.length}`);
             
             const response = await axios.put(`${this.apiBaseUrl}/contents${path}`, data, {
                 headers: {
                     'Authorization': `token ${this.token}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
             });
             
             if (response.status === 200 && response.data) {
+                console.log(`File ${path} saved successfully`);
                 return response.data;
             }
             
@@ -246,6 +344,15 @@ export class JupyterHubConnection {
                 this.isConnected = false;
                 vscode.commands.executeCommand('jupyterhub-remote-file-explorer.updateCredentials');
                 throw new Error('Invalid credentials');
+            } else if (this.isTimeoutError(error)) {
+                vscode.window.showErrorMessage(`Operation timed out. Please check your network connection and server status.`);
+                throw new Error('Connection timeout');
+            } else {
+                // Show detailed error message to help debug
+                const errorMessage = axios.isAxiosError(error) && error.response 
+                    ? `${error.message} (${error.response.status}: ${JSON.stringify(error.response.data)})`
+                    : `${error instanceof Error ? error.message : String(error)}`;
+                vscode.window.showErrorMessage(`Failed to save file: ${errorMessage}`);
             }
             
             throw new Error(`Failed to save file: ${error instanceof Error ? error.message : String(error)}`);
@@ -269,7 +376,8 @@ export class JupyterHubConnection {
             const response = await axios.delete(`${this.apiBaseUrl}/contents${path}`, {
                 headers: {
                     'Authorization': `token ${this.token}`
-                }
+                },
+                timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
             });
             
             return response.status === 204;
@@ -282,6 +390,9 @@ export class JupyterHubConnection {
                 this.isConnected = false;
                 vscode.commands.executeCommand('jupyterhub-remote-file-explorer.updateCredentials');
                 throw new Error('Invalid credentials');
+            } else if (this.isTimeoutError(error)) {
+                vscode.window.showErrorMessage(`Operation timed out. Please check your network connection and server status.`);
+                throw new Error('Connection timeout');
             }
             
             throw new Error(`Failed to delete item: ${error instanceof Error ? error.message : String(error)}`);
@@ -310,4 +421,9 @@ export class JupyterHubConnection {
         return axios.isAxiosError(error) && 
                (error.response?.status === 401 || error.response?.status === 403);
     }
-} 
+    
+    private isTimeoutError(error: any): boolean {
+        return axios.isAxiosError(error) && 
+               (error.code === 'ECONNABORTED' || error.message.includes('timeout'));
+    }
+}

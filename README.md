@@ -27,14 +27,14 @@ To use this extension, you'll need an API token from your JupyterHub server:
 
 1. Open the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P` on macOS)
 2. Type "JupyterHub: Connect" and select the command
-3. If you have saved connections, you'll see a list to choose from, or you can create a new one
+3. You'll see a dropdown list of your saved connections, or you can create a new one
 4. For new connections:
    - Enter a name for the connection
    - Enter your JupyterHub server URL (e.g., `https://your-jupyterhub-server.com`)
    - Enter your API token
    - Choose whether to save this connection for future use
 
-The extension will automatically remember your previous connections, so you can quickly switch between different JupyterHub servers without re-entering credentials.
+The extension saves your connections so you can quickly select them from a dropdown when connecting, without needing to re-enter credentials each time.
 
 ### Managing Saved Connections
 
@@ -54,7 +54,6 @@ JupyterHub tokens can expire or become invalid over time. This extension will:
 - Provide status information about your connection in the status bar
 
 To manually update your credentials:
-
 - Click on the JupyterHub status indicator in the status bar
 - Select "Update Credentials" from the menu
 - Or use the "JupyterHub: Update Credentials" command from the Command Palette
@@ -91,7 +90,8 @@ Once connected:
 
 This extension contributes the following settings:
 
-* `jupyterhub.rememberCredentials`: Enable/disable storing JupyterHub credentials securely
+- `jupyterhub.autoConnect`: Enable/disable automatic connection to the last used JupyterHub server on startup (disabled by default)
+- `jupyterhub.connectionTimeout`: Timeout in milliseconds for JupyterHub server connections (default: 10000)
 
 ## Known Issues
 
