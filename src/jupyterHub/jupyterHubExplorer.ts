@@ -64,8 +64,14 @@ export class JupyterHubTreeDataProvider implements vscode.TreeDataProvider<FileE
             };
         }
         
-        // Set context for context menu
-        treeItem.contextValue = element.type;
+        // Set context for context menu - ensure both directory and file types have appropriate context values
+        if (element.type === 'directory') {
+            treeItem.contextValue = 'directory';
+        } else if (element.type === 'notebook') {
+            treeItem.contextValue = 'notebook';
+        } else {
+            treeItem.contextValue = 'file';
+        }
         
         return treeItem;
     }

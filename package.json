@@ -124,6 +124,11 @@
           "command": "jupyterhub-remote-file-explorer.deleteItem",
           "when": "view == jupyterhubExplorer",
           "group": "inline"
+        },
+        {
+          "command": "jupyterhub-remote-file-explorer.deleteItem",
+          "when": "view == jupyterhubExplorer",
+          "group": "1_modification"
         }
       ]
     },
