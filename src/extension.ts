@@ -18,7 +18,7 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.showInformationMessage('JupyterHub Explorer is activating...');
 		
 		console.log(`Extension path: ${context.extensionPath}`);
-		console.log(`Global storage path: ${context.globalStoragePath}`);
+		console.log(`Global storage path: ${context.globalStorageUri?.fsPath || 'Not available'}`);
 		
 		// Register the hello world command
 		const helloWorldCommand = vscode.commands.registerCommand('jupyterhub-remote-file-explorer.helloWorld', () => {
@@ -63,6 +63,22 @@ export function activate(context: vscode.ExtensionContext) {
 						treeDataProvider,
 						showCollapseAll: true,
 						canSelectMany: false
+					});
+					
+					// Handle selection events for context menus
+					treeView.onDidChangeSelection(event => {
+						console.log('Selection changed:', event.selection.length > 0 ? event.selection[0].name : 'none');
+						// Just logging selection - this will help for debugging
+					});
+					
+					// Handle expanded state - no specific handling needed now
+					treeView.onDidExpandElement(event => {
+						console.log(`Expanded: ${event.element.path}`);
+					});
+					
+					// Handle collapse state - no specific handling needed now
+					treeView.onDidCollapseElement(event => {
+						console.log(`Collapsed: ${event.element.path}`);
 					});
 					
 					context.subscriptions.push(treeView);
@@ -129,133 +145,151 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		});
 		
-		// Forget credentials
-		const forgetCredentialsCommand = vscode.commands.registerCommand('jupyterhub-remote-file-explorer.forgetCredentials', async () => {
-			await connectionManager.forgetCredentials();
-		});
-		
-		// Create a new file on the server
-		const createFileCommand = vscode.commands.registerCommand('jupyterhub-remote-file-explorer.createFile', async (node?: FileEntry) => {
-			if (!connectionManager.isConnected()) {
-				vscode.window.showWarningMessage('Please connect to a JupyterHub server first');
-				return;
-			}
-			
-			const basePath = node && node.type === 'directory' ? node.path : '/';
-			
-			const fileName = await vscode.window.showInputBox({
-				prompt: 'Enter file name',
-				placeHolder: 'filename.txt',
-				ignoreFocusOut: true
-			});
-			
-			if (!fileName) {
-				return; // User cancelled
-			}
-			
-			try {
-				const filePath = `${basePath}/${fileName}`.replace(/\/+/g, '/');
-				await connectionManager.connection?.createItem(filePath, 'file', '');
-				
-				// Refresh the explorer
-				if (treeDataProvider) {
-					treeDataProvider.refresh();
-				}
-				
-				// Open the new file
-				const uri = vscode.Uri.parse(`${JUPYTER_HUB_SCHEME}:${filePath}`);
-				await vscode.commands.executeCommand('vscode.open', uri);
-			} catch (error) {
-				vscode.window.showErrorMessage(`Failed to create file: ${error instanceof Error ? error.message : String(error)}`);
-			}
-		});
-		
-		// Create a new directory on the server
-		const createDirectoryCommand = vscode.commands.registerCommand('jupyterhub-remote-file-explorer.createDirectory', async (node?: FileEntry) => {
-			if (!connectionManager.isConnected()) {
-				vscode.window.showWarningMessage('Please connect to a JupyterHub server first');
-				return;
-			}
-			
-			const basePath = node && node.type === 'directory' ? node.path : '/';
-			
-			const dirName = await vscode.window.showInputBox({
-				prompt: 'Enter directory name',
-				placeHolder: 'newdirectory',
-				ignoreFocusOut: true
-			});
-			
-			if (!dirName) {
-				return; // User cancelled
-			}
-			
-			try {
-				const dirPath = `${basePath}/${dirName}`.replace(/\/+/g, '/');
-				await connectionManager.connection?.createItem(dirPath, 'directory');
-				
-				// Refresh the explorer
-				if (treeDataProvider) {
-					treeDataProvider.refresh();
-				}
-			} catch (error) {
-				vscode.window.showErrorMessage(`Failed to create directory: ${error instanceof Error ? error.message : String(error)}`);
-			}
-		});
-		
-		// Delete a file or directory
-		const deleteItemCommand = vscode.commands.registerCommand('jupyterhub-remote-file-explorer.deleteItem', async (node?: FileEntry) => {
-			if (!connectionManager.isConnected() || !node) {
-				vscode.window.showWarningMessage('Please connect to a JupyterHub server and select an item to delete');
-				return;
-			}
-			
-			const confirmed = await vscode.window.showWarningMessage(
-				`Are you sure you want to delete ${node.name}?`,
-				{ modal: true },
-				'Delete'
-			);
-			
-			if (confirmed !== 'Delete') {
-				return; // User cancelled
-			}
-			
-			try {
-				await connectionManager.connection?.deleteItem(node.path);
-				
-				// Refresh the explorer
-				if (treeDataProvider) {
-					treeDataProvider.refresh();
-				}
-			} catch (error) {
-				vscode.window.showErrorMessage(`Failed to delete ${node.name}: ${error instanceof Error ? error.message : String(error)}`);
-			}
-		});
-		
-		// Register all commands
-		context.subscriptions.push(
-			connectCommand,
-			disconnectCommand,
-			refreshCommand,
-			forgetCredentialsCommand,
-			createFileCommand,
-			createDirectoryCommand,
-			deleteItemCommand,
-			updateCredentialsCommand,
-			showConnectionStatusCommand,
-			manageConnectionsCommand
-		);
-		
-		// Register configuration for the extension
-		// Removed: vscode.workspace.getConfiguration().update('jupyterhub.rememberCredentials', true, vscode.ConfigurationTarget.Global);
-		
-		// Try to connect automatically if configured
-		const autoConnect = vscode.workspace.getConfiguration('jupyterhub').get<boolean>('autoConnect', false);
-		if (autoConnect) {
-			vscode.commands.executeCommand('jupyterhub-remote-file-explorer.connect');
+	// Forget credentials
+	const forgetCredentialsCommand = vscode.commands.registerCommand('jupyterhub-remote-file-explorer.forgetCredentials', async () => {
+		await connectionManager.forgetCredentials();
+	});
+	
+	// Create a new file on the server
+	const createFileCommand = vscode.commands.registerCommand('jupyterhub-remote-file-explorer.createFile', async (node?: FileEntry) => {
+		if (!connectionManager.isConnected()) {
+			vscode.window.showWarningMessage('Please connect to a JupyterHub server first');
+			return;
 		}
 		
-		console.log('===== JupyterHub Remote File Explorer ACTIVATION COMPLETED =====');
-		vscode.window.showInformationMessage('JupyterHub Explorer is now active');
+		const basePath = node && node.type === 'directory' ? node.path : '/';
+		
+		const fileName = await vscode.window.showInputBox({
+			prompt: 'Enter file name',
+			placeHolder: 'filename.txt',
+			ignoreFocusOut: true
+		});
+		
+		if (!fileName) {
+			return; // User cancelled
+		}
+		
+		try {
+			const filePath = `${basePath}/${fileName}`.replace(/\/+/g, '/');
+			const result = await connectionManager.connection?.createItem(filePath, 'file', '');
+			
+			// Refresh the explorer
+			if (treeDataProvider) {
+				treeDataProvider.refresh();
+			}
+			
+			// Get the actual path of the created file from the response
+			const actualPath = result?.path || filePath;
+			console.log(`Opening newly created file at: ${actualPath}`);
+			
+			// Open the new file
+			const uri = vscode.Uri.parse(`${JUPYTER_HUB_SCHEME}:${actualPath}`);
+			
+			try {
+				await vscode.commands.executeCommand('vscode.open', uri);
+				console.log(`File opened successfully: ${actualPath}`);
+			} catch (openError: unknown) {
+				console.error(`Error opening file:`, openError);
+				vscode.window.showErrorMessage(`Created file successfully but couldn't open it: ${openError instanceof Error ? openError.message : String(openError)}`);
+			}
+			
+		} catch (error: unknown) {
+			vscode.window.showErrorMessage(`Failed to create file: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	});
+	
+	// Create a new directory on the server
+	const createDirectoryCommand = vscode.commands.registerCommand('jupyterhub-remote-file-explorer.createDirectory', async (node?: FileEntry) => {
+		if (!connectionManager.isConnected()) {
+			vscode.window.showWarningMessage('Please connect to a JupyterHub server first');
+			return;
+		}
+		
+		const basePath = node && node.type === 'directory' ? node.path : '/';
+		
+		const dirName = await vscode.window.showInputBox({
+			prompt: 'Enter directory name',
+			placeHolder: 'newdirectory',
+			ignoreFocusOut: true
+		});
+		
+		if (!dirName) {
+			return; // User cancelled
+		}
+		
+		try {
+			const dirPath = `${basePath}/${dirName}`.replace(/\/+/g, '/');
+			const result = await connectionManager.connection?.createItem(dirPath, 'directory');
+			
+			// Give the server a moment to update before refreshing
+			console.log(`Directory created: ${result?.path || dirPath}`);
+			
+			// Refresh the explorer with a small delay to ensure server has updated
+			setTimeout(() => {
+				if (treeDataProvider) {
+					console.log('Refreshing tree view after directory creation');
+					treeDataProvider.refresh();
+				}
+			}, 500);
+		} catch (error) {
+			vscode.window.showErrorMessage(`Failed to create directory: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	});
+	
+	// Delete a file or directory
+	const deleteItemCommand = vscode.commands.registerCommand('jupyterhub-remote-file-explorer.deleteItem', async (node?: FileEntry) => {
+		if (!connectionManager.isConnected() || !node) {
+			vscode.window.showWarningMessage('Please connect to a JupyterHub server and select an item to delete');
+			return;
+		}
+		
+		const confirmed = await vscode.window.showWarningMessage(
+			`Are you sure you want to delete ${node.name}?`,
+			{ modal: true },
+			'Delete'
+		);
+		
+		if (confirmed !== 'Delete') {
+			return; // User cancelled
+		}
+		
+		try {
+			await connectionManager.connection?.deleteItem(node.path);
+			
+			// Refresh the explorer
+			if (treeDataProvider) {
+				treeDataProvider.refresh();
+			}
+		} catch (error) {
+			vscode.window.showErrorMessage(`Failed to delete ${node.name}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	});
+	
+	// Register all commands
+	context.subscriptions.push(
+		connectCommand,
+		disconnectCommand,
+		refreshCommand,
+		forgetCredentialsCommand,
+		createFileCommand,
+		createDirectoryCommand,
+		deleteItemCommand,
+		updateCredentialsCommand,
+		showConnectionStatusCommand,
+		manageConnectionsCommand
+	);
+	
+	// Register configuration for the extension
+	// Removed: vscode.workspace.getConfiguration().update('jupyterhub.rememberCredentials', true, vscode.ConfigurationTarget.Global);
+	
+	// Try to connect automatically if configured
+	const autoConnect = vscode.workspace.getConfiguration('jupyterhub').get<boolean>('autoConnect', false);
+	if (autoConnect) {
+		vscode.commands.executeCommand('jupyterhub-remote-file-explorer.connect');
+	}
+	
+	console.log('===== JupyterHub Remote File Explorer ACTIVATION COMPLETED =====');
+	vscode.window.showInformationMessage('JupyterHub Explorer is now active');
 	} catch (error) {
 		console.error('ERROR DURING ACTIVATION:', error);
 		if (error instanceof Error) {

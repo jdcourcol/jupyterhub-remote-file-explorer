@@ -79,7 +79,9 @@
       "explorer": [
         {
           "id": "jupyterhubExplorer",
-          "name": "JupyterHub Explorer"
+          "name": "JupyterHub Explorer",
+          "type": "tree",
+          "visibility": "visible"
         }
       ]
     },
@@ -113,17 +115,27 @@
         {
           "command": "jupyterhub-remote-file-explorer.createFile",
           "when": "view == jupyterhubExplorer && viewItem == directory",
-          "group": "inline"
+          "group": "inline@1"
         },
         {
           "command": "jupyterhub-remote-file-explorer.createDirectory",
           "when": "view == jupyterhubExplorer && viewItem == directory",
-          "group": "inline"
+          "group": "inline@2"
         },
         {
           "command": "jupyterhub-remote-file-explorer.deleteItem",
           "when": "view == jupyterhubExplorer",
-          "group": "inline"
+          "group": "inline@3"
+        },
+        {
+          "command": "jupyterhub-remote-file-explorer.createFile",
+          "when": "view == jupyterhubExplorer && viewItem == directory",
+          "group": "navigation"
+        },
+        {
+          "command": "jupyterhub-remote-file-explorer.createDirectory",
+          "when": "view == jupyterhubExplorer && viewItem == directory",
+          "group": "navigation"
         },
         {
           "command": "jupyterhub-remote-file-explorer.deleteItem",

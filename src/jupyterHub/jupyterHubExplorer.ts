@@ -25,30 +25,53 @@ export class JupyterHubTreeDataProvider implements vscode.TreeDataProvider<FileE
      * Refresh the explorer view
      */
     public refresh(): void {
+        console.log('Refreshing JupyterHub tree view');
         this._onDidChangeTreeData.fire(undefined);
+    }
+    
+    /**
+     * Force a full refresh by clearing any cached data
+     */
+    public forceRefresh(): void {
+        console.log('Forcing full refresh of JupyterHub tree view');
+        // Fire two events - first with undefined to refresh everything,
+        // then after a short delay to ensure any cache is cleared
+        this._onDidChangeTreeData.fire(undefined);
+        setTimeout(() => {
+            this._onDidChangeTreeData.fire(undefined);
+        }, 300);
     }
     
     /**
      * Get tree item representation
      */
     getTreeItem(element: FileEntry): vscode.TreeItem {
-        const treeItem = new vscode.TreeItem(
-            element.name,
-            element.type === 'directory' 
-                ? vscode.TreeItemCollapsibleState.Collapsed 
-                : vscode.TreeItemCollapsibleState.None
-        );
+        // Create tree item with proper collapsible state
+        let collapsibleState = vscode.TreeItemCollapsibleState.None;
+        if (element.type === 'directory') {
+            collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+        }
+        
+        // Use element name for label - keep it short and direct
+        const treeItem = new vscode.TreeItem(element.name, collapsibleState);
         
         // Set icon for file type
         if (element.type === 'directory') {
             treeItem.iconPath = new vscode.ThemeIcon('folder');
+            treeItem.contextValue = 'directory';
         } else if (element.type === 'notebook') {
             treeItem.iconPath = new vscode.ThemeIcon('notebook');
+            treeItem.contextValue = 'notebook';
         } else {
             treeItem.iconPath = new vscode.ThemeIcon('file');
+            treeItem.contextValue = 'file';
         }
         
-        // Set tooltip
+        // Use a compact description that only shows when needed
+        // This helps reduce horizontal width requirements
+        treeItem.description = undefined; // No description by default
+        
+        // Set tooltip to show full path on hover instead of in the tree
         treeItem.tooltip = element.path;
         
         // Set command for files
@@ -62,15 +85,6 @@ export class JupyterHubTreeDataProvider implements vscode.TreeDataProvider<FileE
                 title: 'Open File',
                 arguments: [uri]
             };
-        }
-        
-        // Set context for context menu - ensure both directory and file types have appropriate context values
-        if (element.type === 'directory') {
-            treeItem.contextValue = 'directory';
-        } else if (element.type === 'notebook') {
-            treeItem.contextValue = 'notebook';
-        } else {
-            treeItem.contextValue = 'file';
         }
         
         return treeItem;
@@ -124,5 +138,12 @@ export class JupyterHubTreeDataProvider implements vscode.TreeDataProvider<FileE
             vscode.window.showErrorMessage(`Error fetching files: ${error instanceof Error ? error.message : String(error)}`);
             return [];
         }
+    }
+    
+    /**
+     * Helper method to update the directory tree item when expanded
+     */
+    public onDidExpandElement(expandedElement: FileEntry): void {
+        // No longer needed
     }
 } 

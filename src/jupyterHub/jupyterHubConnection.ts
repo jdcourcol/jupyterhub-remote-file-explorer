@@ -188,7 +188,17 @@ export class JupyterHubConnection {
             
             throw new Error('Failed to get file content');
         } catch (error) {
-            console.error(`Failed to get file content at path ${path}:`, error);
+            // For 404 when explicitly checking file existence, we want a cleaner log
+            const isCheckingFileExists = path.toString().includes('api/contents');
+            const is404 = axios.isAxiosError(error) && error.response?.status === 404;
+            
+            if (is404) {
+                // 404 errors are expected in some workflows (checking if files exist)
+                console.log(`File not found at path ${path} (404)`);
+            } else {
+                // Log other errors as actual errors
+                console.error(`Failed to get file content at path ${path}:`, error);
+            }
             
             // Check for unauthorized error - likely invalid or expired token
             if (this.isCredentialError(error)) {
@@ -219,90 +229,119 @@ export class JupyterHubConnection {
                 path = `/${path}`;
             }
             
-            // Get the directory and filename
-            const lastSlashIndex = path.lastIndexOf('/');
-            const directory = path.substring(0, lastSlashIndex) || '/';
-            const name = path.substring(lastSlashIndex + 1);
+            console.log(`Creating ${type} with EXACT name at: ${path}`);
             
-            console.log(`Creating ${type} in directory "${directory}" with name "${name}"`);
+            // DIRECTLY create the item at the exact path with PUT
+            if (type === 'directory') {
+                const directoryData = {
+                    type: 'directory'
+                };
+                
+                const response = await axios.put(`${this.apiBaseUrl}/contents${path}`, directoryData, {
+                    headers: {
+                        'Authorization': `token ${this.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+                });
+                
+                console.log(`Directory created successfully at exact path: ${path}`);
+                return response.data;
+            }
             
-            const data: any = {
-                type: type,
-                name: name
-            };
-            
-            if (type === 'file' && content !== undefined) {
-                // Special handling for notebook files
-                if (name.endsWith('.ipynb')) {
-                    // Use JSON format for notebooks
-                    data.format = 'json';
+            // For files, use PUT directly to the path
+            if (type === 'file') {
+                // Get filename for content type handling
+                const fileName = path.substring(path.lastIndexOf('/') + 1);
+                
+                // Handle different file types
+                if (fileName.endsWith('.ipynb')) {
+                    // For notebooks, create with exact format required by Jupyter API
+                    console.log(`Creating notebook with PUT to exact path: ${path}`);
                     
-                    // Try to parse provided content if it's a valid JSON notebook
-                    try {
-                        const jsonContent = JSON.parse(content);
-                        
-                        // If we have valid JSON with cells, use it directly
-                        if (jsonContent.cells) {
-                            data.content = jsonContent;
-                            console.log('Using provided notebook content');
-                        } else {
-                            // Otherwise use a default notebook template
-                            data.content = {
-                                cells: [],
-                                metadata: {
-                                    kernelspec: {
-                                        display_name: "Python 3",
-                                        language: "python",
-                                        name: "python3"
-                                    }
-                                },
-                                nbformat: 4,
-                                nbformat_minor: 4
-                            };
-                        }
-                    } catch (error) {
-                        // If content isn't valid JSON, use a default notebook template
-                        console.log('Using default notebook template');
-                        data.content = {
+                    const notebookData = {
+                        type: "notebook",
+                        content: {
                             cells: [],
                             metadata: {
                                 kernelspec: {
                                     display_name: "Python 3",
                                     language: "python",
                                     name: "python3"
+                                },
+                                language_info: {
+                                    codemirror_mode: {
+                                        name: "ipython",
+                                        version: 3
+                                    },
+                                    file_extension: ".py",
+                                    mimetype: "text/x-python",
+                                    name: "python",
+                                    nbconvert_exporter: "python",
+                                    pygments_lexer: "ipython3",
+                                    version: "3.8.0"
                                 }
                             },
                             nbformat: 4,
-                            nbformat_minor: 4
-                        };
+                            nbformat_minor: 5
+                        }
+                    };
+                    
+                    // Only use provided content if it's valid notebook JSON
+                    if (content) {
+                        try {
+                            const jsonContent = JSON.parse(content);
+                            if (jsonContent.cells && jsonContent.metadata && jsonContent.nbformat) {
+                                notebookData.content = jsonContent;
+                            }
+                        } catch (e) {
+                            // Invalid JSON, already using default notebook template
+                        }
                     }
+                    
+                    const response = await axios.put(`${this.apiBaseUrl}/contents${path}`, notebookData, {
+                        headers: {
+                            'Authorization': `token ${this.token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+                    });
+                    
+                    if (response.data && response.data.path) {
+                        console.log(`Notebook created successfully at: ${response.data.path}`);
+                    }
+                    
+                    return response.data;
                 } else {
                     // Regular text files
-                    data.content = content;
-                    data.format = 'text';
+                    console.log(`Creating text file with PUT to exact path: ${path}`);
+                    
+                    const fileData = {
+                        type: "file",
+                        format: "text",
+                        content: content || ""
+                    };
+                    
+                    const response = await axios.put(`${this.apiBaseUrl}/contents${path}`, fileData, {
+                        headers: {
+                            'Authorization': `token ${this.token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+                    });
+                    
+                    if (response.data && response.data.path) {
+                        console.log(`Text file created successfully at: ${response.data.path}`);
+                    }
+                    
+                    return response.data;
                 }
             }
             
-            console.log(`POST request to ${this.apiBaseUrl}/contents${directory} with data:`, JSON.stringify(data));
-            
-            const response = await axios.post(`${this.apiBaseUrl}/contents${directory}`, data, {
-                headers: {
-                    'Authorization': `token ${this.token}`,
-                    'Content-Type': 'application/json'
-                },
-                timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
-            });
-            
-            if (response.status === 201 && response.data) {
-                console.log(`${type} created successfully at: ${response.data.path || path}`);
-                return response.data;
-            }
-            
-            throw new Error(`Failed to create ${type}`);
+            throw new Error(`Unsupported item type: ${type}`);
         } catch (error) {
             console.error(`Failed to create ${type} at path ${path}:`, error);
             
-            // Check for unauthorized error - likely invalid or expired token
             if (this.isCredentialError(error)) {
                 vscode.window.showErrorMessage('JupyterHub credentials are invalid or expired. Please reconnect with new credentials.');
                 this.isConnected = false;
@@ -312,10 +351,18 @@ export class JupyterHubConnection {
                 vscode.window.showErrorMessage(`Operation timed out. Please check your network connection and server status.`);
                 throw new Error('Connection timeout');
             } else {
-                // Show detailed error message for debugging
-                const errorMessage = axios.isAxiosError(error) && error.response 
-                    ? `${error.message} (${error.response.status}: ${JSON.stringify(error.response.data)})`
-                    : `${error instanceof Error ? error.message : String(error)}`;
+                // Show detailed error message with response data
+                let errorMessage = "";
+                if (axios.isAxiosError(error) && error.response) {
+                    errorMessage = `${error.message} (Status: ${error.response.status}`;
+                    try {
+                        errorMessage += `, Data: ${JSON.stringify(error.response.data)})`;
+                    } catch (e) {
+                        errorMessage += ")";
+                    }
+                } else {
+                    errorMessage = error instanceof Error ? error.message : String(error);
+                }
                 vscode.window.showErrorMessage(`Failed to create ${type}: ${errorMessage}`);
             }
             
