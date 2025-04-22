@@ -105,6 +105,7 @@ export class JupyterHubFileSystemProvider implements vscode.FileSystemProvider {
                         const jsonContent = typeof content.content === 'string' 
                             ? JSON.parse(content.content) 
                             : content.content;
+                        // Format with standard indentation for consistency
                         data = Buffer.from(JSON.stringify(jsonContent, null, 2), 'utf8');
                     } catch (jsonError) {
                         console.error(`Error parsing notebook JSON: ${jsonError}`);
@@ -140,20 +141,53 @@ export class JupyterHubFileSystemProvider implements vscode.FileSystemProvider {
             // Convert buffer to string for Jupyter API
             const contentStr = Buffer.from(content).toString('utf8');
             
+            // For notebook files, verify it's valid JSON
+            if (uri.path.endsWith('.ipynb')) {
+                try {
+                    JSON.parse(contentStr);
+                    console.log('Notebook JSON validation successful');
+                } catch (error) {
+                    console.error('Notebook content is not valid JSON:', error);
+                    throw new Error('Cannot save invalid JSON content to a notebook file');
+                }
+            }
+            
             // Try to create/update the file
             try {
-                if (options.create) {
-                    // Always use createItem which now uses PUT for files
-                    console.log(`Creating new file via PUT: ${uri.path}`);
+                // Check if the file already exists, regardless of options.create flag
+                let fileExists = false;
+                try {
+                    await this.connection.getFileContent(uri.path);
+                    fileExists = true;
+                    console.log(`File ${uri.path} exists check: TRUE`);
+                } catch (error) {
+                    fileExists = false;
+                    console.log(`File ${uri.path} exists check: FALSE`);
+                }
+                
+                // First try to update, fall back to create if needed
+                try {
+                    if (fileExists) {
+                        // File exists - update it
+                        console.log(`Updating existing file: ${uri.path}`);
+                        await this.connection.saveFile(uri.path, contentStr);
+                        this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+                        vscode.window.setStatusBarMessage(`File ${uri.path} saved successfully`, 3000);
+                        return;
+                    }
+                } catch (updateError) {
+                    console.error(`Error updating file. Will try to create instead:`, updateError);
+                    // Continue to creation below if update fails
+                }
+                
+                // Create new file if it doesn't exist or update failed
+                if (!fileExists || options.overwrite) {
+                    console.log(`Creating new file: ${uri.path}`);
                     await this.connection.createItem(uri.path, 'file', contentStr);
                     this._emitter.fire([{ type: vscode.FileChangeType.Created, uri }]);
                     vscode.window.setStatusBarMessage(`File ${uri.path} created successfully`, 3000);
                 } else {
-                    // Update existing file
-                    console.log(`Updating existing file: ${uri.path}`);
-                    await this.connection.saveFile(uri.path, contentStr);
-                    this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
-                    vscode.window.setStatusBarMessage(`File ${uri.path} saved successfully`, 3000);
+                    throw vscode.FileSystemError.FileExists(uri);
                 }
             } catch (error) {
                 console.error(`Error creating/saving file: ${error}`);

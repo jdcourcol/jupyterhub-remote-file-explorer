@@ -234,20 +234,48 @@ export class JupyterHubConnection {
             if (type === 'file' && content !== undefined) {
                 // Special handling for notebook files
                 if (name.endsWith('.ipynb')) {
-                    // Use JSON format for notebooks with proper structure
+                    // Use JSON format for notebooks
                     data.format = 'json';
-                    data.content = {
-                        cells: [],
-                        metadata: {
-                            kernelspec: {
-                                display_name: "Python 3",
-                                language: "python",
-                                name: "python3"
-                            }
-                        },
-                        nbformat: 4,
-                        nbformat_minor: 4
-                    };
+                    
+                    // Try to parse provided content if it's a valid JSON notebook
+                    try {
+                        const jsonContent = JSON.parse(content);
+                        
+                        // If we have valid JSON with cells, use it directly
+                        if (jsonContent.cells) {
+                            data.content = jsonContent;
+                            console.log('Using provided notebook content');
+                        } else {
+                            // Otherwise use a default notebook template
+                            data.content = {
+                                cells: [],
+                                metadata: {
+                                    kernelspec: {
+                                        display_name: "Python 3",
+                                        language: "python",
+                                        name: "python3"
+                                    }
+                                },
+                                nbformat: 4,
+                                nbformat_minor: 4
+                            };
+                        }
+                    } catch (error) {
+                        // If content isn't valid JSON, use a default notebook template
+                        console.log('Using default notebook template');
+                        data.content = {
+                            cells: [],
+                            metadata: {
+                                kernelspec: {
+                                    display_name: "Python 3",
+                                    language: "python",
+                                    name: "python3"
+                                }
+                            },
+                            nbformat: 4,
+                            nbformat_minor: 4
+                        };
+                    }
                 } else {
                     // Regular text files
                     data.content = content;
@@ -309,17 +337,17 @@ export class JupyterHubConnection {
                 path = `/${path}`;
             }
             
-            // First get the current file to maintain its format
-            const currentFile = await this.getFileContent(path);
+            console.log(`Saving file ${path} with content length: ${content.length}`);
             
-            // Properly format the request according to JupyterHub API spec
-            const data = {
-                content: content,
+            // For all files, we must use 'text' format for PUT requests
+            const data: any = {
                 type: 'file',
-                format: 'text'  // Explicitly set format to text
+                content: content,
+                format: 'text'
             };
             
-            console.log(`Saving file ${path} with content length: ${content.length}`);
+            // Log the request format for debugging
+            console.log(`PUT request to ${this.apiBaseUrl}/contents${path} using format: text`);
             
             const response = await axios.put(`${this.apiBaseUrl}/contents${path}`, data, {
                 headers: {
@@ -337,6 +365,12 @@ export class JupyterHubConnection {
             throw new Error('Failed to save file');
         } catch (error) {
             console.error(`Failed to save file at path ${path}:`, error);
+            
+            // Add more detailed error information for debugging
+            if (axios.isAxiosError(error) && error.response) {
+                console.error(`Response status: ${error.response.status}`);
+                console.error(`Response data:`, JSON.stringify(error.response.data));
+            }
             
             // Check for unauthorized error - likely invalid or expired token
             if (this.isCredentialError(error)) {
