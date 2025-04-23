@@ -92,6 +92,20 @@ This extension contributes the following settings:
 
 - `jupyterhub.autoConnect`: Enable/disable automatic connection to the last used JupyterHub server on startup (disabled by default)
 - `jupyterhub.connectionTimeout`: Timeout in milliseconds for JupyterHub server connections (default: 10000)
+- `jupyterhub.allowSelfSignedCertificates`: Allow connections to servers with self-signed or invalid SSL certificates (disabled by default)
+
+### Certificate Verification
+
+By default, this extension enforces SSL certificate validation when connecting to JupyterHub servers. This improves security but may prevent connections to servers with self-signed certificates.
+
+You can control this behavior with the `jupyterhub.allowSelfSignedCertificates` setting:
+
+- When `false` (default): Standard certificate validation applies, requiring valid SSL certificates signed by trusted certificate authorities
+- When `true`: Certificate validation is disabled, allowing connections to servers with self-signed certificates
+
+If you encounter SSL certificate errors when connecting:
+
+- You can enable the `jupyterhub.allowSelfSignedCertificates` setting to allow connections from self-signed or invalid certificates
 
 ## Known Issues
 
