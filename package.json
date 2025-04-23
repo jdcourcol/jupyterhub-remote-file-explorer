@@ -6,7 +6,7 @@
   },
   "displayName": "JupyterHub Remote File Explorer",
   "description": "Displays the file system for a remote JupyterHub server and allows you to interact with objects directly from VSCode",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -14,7 +14,7 @@
   },
   "icon": "images/icon.png",
   "engines": {
-    "vscode": "^1.99.0"
+    "vscode": ">=1.96.0"
   },
   "categories": [
     "Other"
@@ -183,7 +183,7 @@
     "@types/jest": "^29.5.12",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
-    "@types/vscode": "^1.99.0",
+    "@types/vscode": "^1.96.0",
     "@typescript-eslint/eslint-plugin": "^8.28.0",
     "@typescript-eslint/parser": "^8.28.0",
     "@vscode/test-cli": "^0.0.10",
