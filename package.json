@@ -151,6 +151,11 @@
           "type": "number",
           "default": 10000,
           "description": "Timeout (in milliseconds) for JupyterHub server connections"
+        },
+        "jupyterhub.allowSelfSignedCertificates": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow connections to servers with self-signed or invalid SSL certificates"
         }
       }
     }
@@ -166,7 +171,14 @@
     "lint": "eslint src",
     "test": "npx jest --config jest.config.js --no-cache",
     "test:watch": "npx jest --config jest.config.js --watch --no-cache",
-    "test:coverage": "npx jest --config jest.config.js --coverage --no-cache"
+    "test:coverage": "npx jest --config jest.config.js --coverage --no-cache",
+    "prepare": "husky && husky install"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
@@ -178,7 +190,10 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.23.0",
+    "husky": "^8.0.0",
     "jest": "^29.7.0",
+    "lint-staged": "^15.5.1",
+    "prettier": "^3.5.3",
     "ts-jest": "^29.1.2",
     "ts-loader": "^9.5.2",
     "typescript": "^5.8.2",
