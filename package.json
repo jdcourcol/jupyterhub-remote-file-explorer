@@ -1,14 +1,18 @@
 {
   "name": "jupyterhub-remote-file-explorer",
   "publisher": "jonnokc",
+  "author": {
+    "name": "Jonathan Adams"
+  },
   "displayName": "JupyterHub Remote File Explorer",
   "description": "Displays the file system for a remote JupyterHub server and allows you to interact with objects directly from VSCode",
   "version": "1.0.0",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Jonnokc/jupyterhub-remote-file-explorer.git"
+    "url": "https://github.com/Jonnokc/jupyterhub-remote-file-explorer"
   },
+  "icon": "images/icon.png",
   "engines": {
     "vscode": "^1.99.0"
   },
