@@ -12,6 +12,7 @@
 			"args": [
 				"--extensionDevelopmentPath=${workspaceFolder}",
 				"--disable-extensions",
+				"--disable-workspace-trust",
 				"--verbose"
 			],
 			"outFiles": [
@@ -19,6 +20,10 @@
 			],
 			"preLaunchTask": "npm: compile",
 			"sourceMaps": true,
+			"env": {
+				"VSCODE_DEBUG_MODE": "true",
+				"VSCODE_EXTENSION_NOTIFICATION_DEBUG": "true"
+			},
 			"resolveSourceMapLocations": [
 				"${workspaceFolder}/**",
 				"!**/node_modules/**"
