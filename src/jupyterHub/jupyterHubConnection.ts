@@ -130,26 +130,42 @@ export class JupyterHubConnection implements JupyterHubConnectionInterface {
 
   /**
    * Creates an HTTPS agent that accepts self-signed certificates when configured to do so
-   * @returns An HTTPS agent configured based on user settings
    */
   private getHttpsAgent() {
+    // Create a custom HTTPS agent
     const https = require('https');
 
     // Check if we should allow invalid certificates
     const allowSelfSigned = vscode.workspace
       .getConfiguration('jupyterhub')
-      .get<boolean>('allowSelfSignedCertificates', false);
+      .get<boolean>('allowSelfSignedCertificates', true);
 
     if (allowSelfSigned) {
       // Use Node's built-in TLS options to bypass certificate validation when allowed
       return new https.Agent({
         rejectUnauthorized: false,
+        // Additional options to handle problematic certificate chains
+        checkServerIdentity: () => undefined, // Skip hostname checks
+        secureOptions: require('constants').SSL_OP_NO_TLSv1_2, // Try forcing TLS 1.3 or 1.1
+        maxVersion: 'TLSv1.3',
+        minVersion: 'TLSv1',
       });
     } else {
       // Use default certificate validation behavior
       return new https.Agent({
         rejectUnauthorized: true,
       });
+    }
+  }
+
+  /**
+   * Safely stringifies an object, handling circular references
+   */
+  private safeStringify(obj: any): string {
+    try {
+      return JSON.stringify(obj);
+    } catch (error) {
+      return '[Cannot stringify - circular reference]';
     }
   }
 
@@ -174,13 +190,25 @@ export class JupyterHubConnection implements JupyterHubConnectionInterface {
         .getConfiguration('jupyterhub')
         .get<number>('connectionTimeout', 10000);
 
+      // Check if we should allow invalid certificates
+      const allowSelfSigned = vscode.workspace
+        .getConfiguration('jupyterhub')
+        .get<boolean>('allowSelfSignedCertificates', true);
+
+      // Disable Node.js certificate validation globally for this request if allowed
+      let originalTlsSetting;
+      if (allowSelfSigned) {
+        originalTlsSetting = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      }
+
       // Validate connection by getting user info
       const response = await axios.get(`${this.serverUrl}/hub/api/user`, {
         headers: {
           Authorization: `token ${this.token}`,
         },
         timeout: timeout,
-        // Configure HTTPS agent for certificate validation based on settings
+        // Configure HTTPS agent based on settings
         httpsAgent: this.getHttpsAgent(),
       });
 
@@ -188,29 +216,48 @@ export class JupyterHubConnection implements JupyterHubConnectionInterface {
         this.username = response.data.name;
         this.apiBaseUrl = `${this.serverUrl}/user/${this.username}/api`;
         this.isConnected = true;
+
+        // Reset NODE_TLS_REJECT_UNAUTHORIZED to its original value if changed
+        if (allowSelfSigned && originalTlsSetting !== undefined) {
+          process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalTlsSetting;
+        }
+
         return true;
+      }
+
+      // Reset NODE_TLS_REJECT_UNAUTHORIZED to its original value if changed
+      if (allowSelfSigned && originalTlsSetting !== undefined) {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalTlsSetting;
       }
 
       return false;
     } catch (error) {
+      // Reset NODE_TLS_REJECT_UNAUTHORIZED to its original value if it was changed
+      const allowSelfSigned = vscode.workspace
+        .getConfiguration('jupyterhub')
+        .get<boolean>('allowSelfSignedCertificates', true);
+
+      if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' && allowSelfSigned) {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+      }
+
       console.error('Failed to connect to JupyterHub server:', error);
 
-      // Check if it's a certificate validation error and show specific message
+      // Continue with existing error handling code
       if (axios.isAxiosError(error) && error.message.includes('certificate')) {
-        const allowSelfSigned = vscode.workspace
-          .getConfiguration('jupyterhub')
-          .get<boolean>('allowSelfSignedCertificates', false);
-
-        if (!allowSelfSigned) {
-          // Offer to enable self-signed certificates
+        if (allowSelfSigned) {
+          vscode.window.showErrorMessage(
+            'SSL certificate error when connecting to JupyterHub server, even though certificate validation is disabled. There may be a network issue or proxy intercepting the connection.'
+          );
+        } else {
           const action = await vscode.window.showErrorMessage(
-            'SSL certificate validation error. The server may use a self-signed certificate.',
-            'Enable Self-Signed Certificates',
+            'SSL certificate validation error. This server may use a self-signed certificate.',
+            'Disable Certificate Validation',
             'Open Settings',
             'Cancel'
           );
 
-          if (action === 'Enable Self-Signed Certificates') {
+          if (action === 'Disable Certificate Validation') {
             // Update the setting
             await vscode.workspace
               .getConfiguration('jupyterhub')
@@ -224,8 +271,8 @@ export class JupyterHubConnection implements JupyterHubConnectionInterface {
               'jupyterhub.allowSelfSignedCertificates'
             );
           }
-          return false;
         }
+        return false;
       }
 
       // Check for unauthorized error - likely invalid or expired token
