@@ -3,6 +3,7 @@
 'use strict';
 
 const path = require('path');
+const glob = require('glob');
 
 //@ts-check
 /** @typedef {import('webpack').Configuration} WebpackConfig **/
@@ -31,10 +32,14 @@ const extensionConfig = {
     rules: [
       {
         test: /\.ts$/,
-        exclude: /node_modules/,
+        exclude: [/node_modules/, /src\/test/, /\.test\.ts$/, /\.spec\.ts$/],
         use: [
           {
-            loader: 'ts-loader'
+            loader: 'ts-loader',
+            options: {
+              configFile: 'tsconfig.prod.json',
+              transpileOnly: true // Skip type checking for speed during build
+            }
           }
         ]
       }

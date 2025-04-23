@@ -1,14 +1,36 @@
+# Source code
+.eslintrc.json
+.eslintrc.js
+.jshintrc
 .vscode/**
 .vscode-test/**
+.gitignore
+src/**
 out/**
 node_modules/**
-src/**
-.gitignore
-.yarnrc
+tsconfig.json
 webpack.config.js
-vsc-extension-quickstart.md
-**/tsconfig.json
-**/eslint.config.mjs
-**/*.map
+jest.config.js
 **/*.ts
-**/.vscode-test.*
+**/*.map
+yarn.lock
+npm-debug.log
+**/*.eslintrc.json
+**/*.eslintrc.js
+
+# Tests
+**/test/**
+**/tests/**
+**/__tests__/**
+**/*.spec.*
+**/*.test.*
+
+# Include dist folder
+!dist/**
+!node_modules/**
+
+# Include necessary docs
+!README.md
+!LICENSE
+!CHANGELOG.md
+!package.json
