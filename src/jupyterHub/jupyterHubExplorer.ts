@@ -3,37 +3,49 @@ import * as path from 'path';
 import { JupyterHubConnection } from './jupyterHubConnection';
 
 /**
- * Interface for a tree item representing a file or directory
+ * Interface for a tree item representing a file or directory in the JupyterHub explorer.
+ * Used to represent the hierarchical file structure in the tree view.
  */
 export interface FileEntry {
+    /** The display name of the file or directory */
     name: string;
+    /** The full path of the file or directory */
     path: string;
+    /** The type of the item (directory, file, or notebook) */
     type: 'directory' | 'file' | 'notebook';
+    /** Optional array of child items (for directories) */
     children?: FileEntry[];
 }
 
 /**
- * Tree data provider for the JupyterHub explorer view
+ * Tree data provider for the JupyterHub explorer view.
+ * Provides the data structure and handling for the VS Code tree view component.
  */
 export class JupyterHubTreeDataProvider implements vscode.TreeDataProvider<FileEntry> {
+    /** Event emitter for tree data changes */
     private _onDidChangeTreeData: vscode.EventEmitter<FileEntry | undefined> = new vscode.EventEmitter<FileEntry | undefined>();
+    /** Event that fires when tree data changes */
     readonly onDidChangeTreeData: vscode.Event<FileEntry | undefined> = this._onDidChangeTreeData.event;
     
+    /**
+     * Creates a new JupyterHub tree data provider
+     * @param connection - The JupyterHub connection to use for API calls
+     */
     constructor(private connection: JupyterHubConnection) {}
     
     /**
-     * Refresh the explorer view
+     * Refreshes the explorer view.
+     * Triggers a refresh of all tree items.
      */
     public refresh(): void {
-        console.log('Refreshing JupyterHub tree view');
         this._onDidChangeTreeData.fire(undefined);
     }
     
     /**
-     * Force a full refresh by clearing any cached data
+     * Forces a full refresh by clearing any cached data.
+     * Fires multiple events to ensure the tree view is fully refreshed.
      */
     public forceRefresh(): void {
-        console.log('Forcing full refresh of JupyterHub tree view');
         // Fire two events - first with undefined to refresh everything,
         // then after a short delay to ensure any cache is cleared
         this._onDidChangeTreeData.fire(undefined);
@@ -43,7 +55,9 @@ export class JupyterHubTreeDataProvider implements vscode.TreeDataProvider<FileE
     }
     
     /**
-     * Get tree item representation
+     * Gets the tree item representation for a file entry.
+     * @param element - The file entry to convert to a tree item
+     * @returns The VS Code tree item for display in the explorer
      */
     getTreeItem(element: FileEntry): vscode.TreeItem {
         // Create tree item with proper collapsible state
@@ -91,7 +105,9 @@ export class JupyterHubTreeDataProvider implements vscode.TreeDataProvider<FileE
     }
     
     /**
-     * Get children of element
+     * Gets the children of a file entry.
+     * @param element - The parent element to get children for, undefined for root
+     * @returns A promise that resolves to an array of child file entries
      */
     async getChildren(element?: FileEntry): Promise<FileEntry[]> {
         try {
@@ -134,14 +150,15 @@ export class JupyterHubTreeDataProvider implements vscode.TreeDataProvider<FileE
                 return a.name.localeCompare(b.name);
             });
         } catch (error) {
-            console.error('Error getting children:', error);
             vscode.window.showErrorMessage(`Error fetching files: ${error instanceof Error ? error.message : String(error)}`);
             return [];
         }
     }
     
     /**
-     * Helper method to update the directory tree item when expanded
+     * Helper method that can be used to update the directory tree item when expanded.
+     * Currently this method is not needed but kept for future extensions.
+     * @param expandedElement - The element that was expanded
      */
     public onDidExpandElement(expandedElement: FileEntry): void {
         // No longer needed

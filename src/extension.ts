@@ -12,20 +12,8 @@ const JUPYTER_HUB_SCHEME = 'jupyter-hub';
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 	try {
-		console.log('===== JupyterHub Remote File Explorer ACTIVATION STARTING =====');
-		
 		// Show activation notification that should be visible immediately
 		vscode.window.showInformationMessage('JupyterHub Explorer is activating...');
-		
-		console.log(`Extension path: ${context.extensionPath}`);
-		console.log(`Global storage path: ${context.globalStorageUri?.fsPath || 'Not available'}`);
-		
-		// Register the hello world command
-		const helloWorldCommand = vscode.commands.registerCommand('jupyterhub-remote-file-explorer.helloWorld', () => {
-			console.log('Hello World command executed!');
-			vscode.window.showInformationMessage('Hello from JupyterHub Explorer!');
-		});
-		context.subscriptions.push(helloWorldCommand);
 		
 		// Create the connection manager
 		const connectionManager = new ConnectionManager(context);
@@ -66,19 +54,18 @@ export function activate(context: vscode.ExtensionContext) {
 					});
 					
 					// Handle selection events for context menus
-					treeView.onDidChangeSelection(event => {
-						console.log('Selection changed:', event.selection.length > 0 ? event.selection[0].name : 'none');
-						// Just logging selection - this will help for debugging
+					treeView.onDidChangeSelection(() => {
+						// Selection change handler
 					});
 					
-					// Handle expanded state - no specific handling needed now
-					treeView.onDidExpandElement(event => {
-						console.log(`Expanded: ${event.element.path}`);
+					// Handle expanded state
+					treeView.onDidExpandElement(() => {
+						// Expansion handler
 					});
 					
-					// Handle collapse state - no specific handling needed now
-					treeView.onDidCollapseElement(event => {
-						console.log(`Collapsed: ${event.element.path}`);
+					// Handle collapse state
+					treeView.onDidCollapseElement(() => {
+						// Collapse handler
 					});
 					
 					context.subscriptions.push(treeView);
@@ -180,16 +167,13 @@ export function activate(context: vscode.ExtensionContext) {
 			
 			// Get the actual path of the created file from the response
 			const actualPath = result?.path || filePath;
-			console.log(`Opening newly created file at: ${actualPath}`);
 			
 			// Open the new file
 			const uri = vscode.Uri.parse(`${JUPYTER_HUB_SCHEME}:${actualPath}`);
 			
 			try {
 				await vscode.commands.executeCommand('vscode.open', uri);
-				console.log(`File opened successfully: ${actualPath}`);
 			} catch (openError: unknown) {
-				console.error(`Error opening file:`, openError);
 				vscode.window.showErrorMessage(`Created file successfully but couldn't open it: ${openError instanceof Error ? openError.message : String(openError)}`);
 			}
 			
@@ -219,15 +203,11 @@ export function activate(context: vscode.ExtensionContext) {
 		
 		try {
 			const dirPath = `${basePath}/${dirName}`.replace(/\/+/g, '/');
-			const result = await connectionManager.connection?.createItem(dirPath, 'directory');
-			
-			// Give the server a moment to update before refreshing
-			console.log(`Directory created: ${result?.path || dirPath}`);
+			await connectionManager.connection?.createItem(dirPath, 'directory');
 			
 			// Refresh the explorer with a small delay to ensure server has updated
 			setTimeout(() => {
 				if (treeDataProvider) {
-					console.log('Refreshing tree view after directory creation');
 					treeDataProvider.refresh();
 				}
 			}, 500);
@@ -279,21 +259,15 @@ export function activate(context: vscode.ExtensionContext) {
 		manageConnectionsCommand
 	);
 	
-	// Register configuration for the extension
-	// Removed: vscode.workspace.getConfiguration().update('jupyterhub.rememberCredentials', true, vscode.ConfigurationTarget.Global);
-	
 	// Try to connect automatically if configured
 	const autoConnect = vscode.workspace.getConfiguration('jupyterhub').get<boolean>('autoConnect', false);
 	if (autoConnect) {
 		vscode.commands.executeCommand('jupyterhub-remote-file-explorer.connect');
 	}
 	
-	console.log('===== JupyterHub Remote File Explorer ACTIVATION COMPLETED =====');
 	vscode.window.showInformationMessage('JupyterHub Explorer is now active');
 	} catch (error) {
-		console.error('ERROR DURING ACTIVATION:', error);
 		if (error instanceof Error) {
-			console.error('Stack trace:', error.stack);
 			vscode.window.showErrorMessage(`JupyterHub Explorer failed to activate: ${error.message}`);
 		} else {
 			vscode.window.showErrorMessage(`JupyterHub Explorer failed to activate: ${String(error)}`);

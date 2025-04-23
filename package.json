@@ -16,11 +16,6 @@
   "contributes": {
     "commands": [
       {
-        "command": "jupyterhub-remote-file-explorer.helloWorld",
-        "title": "Hello World",
-        "category": "JupyterHub"
-      },
-      {
         "command": "jupyterhub-remote-file-explorer.connect",
         "title": "Connect to JupyterHub",
         "category": "JupyterHub"
@@ -167,11 +162,14 @@
     "package": "webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "pretest": "npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "npx jest --config jest.config.js --no-cache",
+    "test:watch": "npx jest --config jest.config.js --watch --no-cache",
+    "test:coverage": "npx jest --config jest.config.js --coverage --no-cache"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.12",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/vscode": "^1.99.0",
@@ -180,6 +178,8 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.23.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
     "ts-loader": "^9.5.2",
     "typescript": "^5.8.2",
     "webpack": "^5.98.0",
@@ -187,5 +187,34 @@
   },
   "dependencies": {
     "axios": "^1.8.4"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "moduleFileExtensions": [
+      "ts",
+      "js"
+    ],
+    "transform": {
+      "^.+\\.ts$": "ts-jest"
+    },
+    "testMatch": [
+      "**/test/**/*.test.ts"
+    ],
+    "coverageReporters": [
+      "json",
+      "lcov",
+      "text",
+      "cobertura"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/test/**/*.ts"
+    ],
+    "globals": {
+      "ts-jest": {
+        "tsconfig": "tsconfig.json"
+      }
+    }
   }
 }

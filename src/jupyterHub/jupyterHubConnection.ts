@@ -1,19 +1,127 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 
+/**
+ * Options for establishing a connection to a JupyterHub server
+ */
 export interface JupyterHubConnectionOptions {
+    /** URL of the JupyterHub server */
     serverUrl: string;
+    /** Authentication token for the JupyterHub API */
     token: string;
+    /** Optional username (will be determined from the API if not provided) */
     username?: string;
 }
 
-export class JupyterHubConnection {
+/**
+ * Interface for JupyterHub connection operations.
+ * Used for dependency injection in tests.
+ */
+export interface JupyterHubConnectionInterface {
+    /**
+     * Establishes a connection to the JupyterHub server
+     * @returns A promise that resolves to true if connection was successful
+     */
+    connect(): Promise<boolean>;
+
+    /**
+     * Disconnects from the JupyterHub server
+     */
+    disconnect(): void;
+
+    /**
+     * Checks if the connection to the server is active
+     * @returns Whether the connection is active
+     */
+    isActive(): boolean;
+
+    /**
+     * Retrieves content of a file
+     * @param path Path to the file
+     * @returns Promise resolving to file content
+     */
+    getFileContent(path: string): Promise<any>;
+
+    /**
+     * Saves content to a file
+     * @param path Path to the file
+     * @param content Content to save
+     * @returns Promise resolving when save is complete
+     */
+    saveFile(path: string, content: string): Promise<any>;
+
+    /**
+     * Lists contents of a directory
+     * @param path Path to the directory
+     * @returns Promise resolving to array of content items
+     */
+    listContents(path: string): Promise<any[]>;
+
+    /**
+     * Gets child items of a directory
+     * @param path Path to the directory
+     * @returns Promise resolving to array of paths
+     */
+    getChildren(path: string): Promise<string[]>;
+
+    /**
+     * Gets metadata for a file or directory
+     * @param path Path to the item
+     * @returns Promise resolving to metadata object
+     */
+    getMetadata(path: string): Promise<any>;
+
+    /**
+     * Creates a new file or directory
+     * @param path Path where to create the item
+     * @param type Type of item to create ('file' or 'directory')
+     * @param content Optional content for files
+     * @returns Promise resolving to created item data
+     */
+    createItem(path: string, type: 'file' | 'directory', content?: string): Promise<any>;
+
+    /**
+     * Deletes a file or directory
+     * @param path Path to the item to delete
+     * @returns Promise resolving when delete is complete
+     */
+    deleteItem(path: string): Promise<void>;
+
+    /**
+     * Gets information about the connected server
+     * @returns Object containing server URL and username
+     */
+    getServerInfo(): { serverUrl: string; username?: string };
+
+    /**
+     * Checks if an error is related to invalid credentials
+     * @param error - The error to check
+     * @returns True if the error is credential-related, false otherwise
+     */
+    isCredentialError(error: any): boolean;
+    
+    /**
+     * Checks if an error is related to a connection timeout
+     * @param error - The error to check
+     * @returns True if the error is timeout-related, false otherwise
+     */
+    isTimeoutError(error: any): boolean;
+}
+
+/**
+ * Manages the connection to a JupyterHub server and provides methods to interact with its contents API
+ */
+export class JupyterHubConnection implements JupyterHubConnectionInterface {
     private serverUrl: string;
     private token: string;
     private username?: string;
     private isConnected: boolean = false;
     private apiBaseUrl: string = '';
 
+    /**
+     * Creates a new JupyterHub connection instance
+     * @param options - Connection configuration options
+     */
     constructor(options: JupyterHubConnectionOptions) {
         this.serverUrl = options.serverUrl;
         this.token = options.token;
@@ -21,7 +129,9 @@ export class JupyterHubConnection {
     }
 
     /**
-     * Connect to the JupyterHub server
+     * Establishes a connection to the JupyterHub server
+     * @returns A promise that resolves to true if connection was successful, false otherwise
+     * @throws Error if the connection fails
      */
     public async connect(): Promise<boolean> {
         try {
@@ -72,14 +182,17 @@ export class JupyterHubConnection {
     }
     
     /**
-     * Disconnect from the JupyterHub server
+     * Disconnects from the JupyterHub server
      */
     public disconnect(): void {
         this.isConnected = false;
     }
     
     /**
-     * Get the list of files at the specified path
+     * Lists the contents at the specified path on the JupyterHub server
+     * @param path - The directory path to list
+     * @returns A promise that resolves to an array of content items
+     * @throws Error if not connected or if the operation fails
      */
     public async listContents(path: string): Promise<any[]> {
         if (!this.isConnected) {
@@ -123,7 +236,10 @@ export class JupyterHubConnection {
     }
     
     /**
-     * Get file content
+     * Retrieves the content of a file from the JupyterHub server
+     * @param path - The path of the file to retrieve
+     * @returns A promise that resolves to the file content object
+     * @throws Error if not connected, if the file is not found, or if the operation fails
      */
     public async getFileContent(path: string): Promise<any> {
         if (!this.isConnected) {
@@ -141,8 +257,6 @@ export class JupyterHubConnection {
             // but we'll first try with the slash as is
             const apiPath = path;
             
-            console.log(`Getting file content from ${this.apiBaseUrl}/contents${apiPath}`);
-            
             try {
                 const response = await axios.get(`${this.apiBaseUrl}/contents${apiPath}`, {
                     headers: {
@@ -156,14 +270,12 @@ export class JupyterHubConnection {
                 });
                 
                 if (response.status === 200 && response.data) {
-                    console.log(`Successfully retrieved file content for ${path}, format: ${response.data.format}`);
                     return response.data;
                 }
             } catch (error) {
                 // If path with leading slash fails, try without the leading slash
                 if (path.startsWith('/')) {
                     const altPath = path.substring(1);
-                    console.log(`Primary request failed, trying alternate path: ${this.apiBaseUrl}/contents/${altPath}`);
                     
                     const altResponse = await axios.get(`${this.apiBaseUrl}/contents/${altPath}`, {
                         headers: {
@@ -177,7 +289,6 @@ export class JupyterHubConnection {
                     });
                     
                     if (altResponse.status === 200 && altResponse.data) {
-                        console.log(`Successfully retrieved file content using alternate path for ${path}`);
                         return altResponse.data;
                     }
                 } else {
@@ -189,16 +300,7 @@ export class JupyterHubConnection {
             throw new Error('Failed to get file content');
         } catch (error) {
             // For 404 when explicitly checking file existence, we want a cleaner log
-            const isCheckingFileExists = path.toString().includes('api/contents');
             const is404 = axios.isAxiosError(error) && error.response?.status === 404;
-            
-            if (is404) {
-                // 404 errors are expected in some workflows (checking if files exist)
-                console.log(`File not found at path ${path} (404)`);
-            } else {
-                // Log other errors as actual errors
-                console.error(`Failed to get file content at path ${path}:`, error);
-            }
             
             // Check for unauthorized error - likely invalid or expired token
             if (this.isCredentialError(error)) {
@@ -216,7 +318,12 @@ export class JupyterHubConnection {
     }
     
     /**
-     * Create a new file or directory
+     * Creates a file or directory on the JupyterHub server
+     * @param path - The path of the item to create
+     * @param type - The type of item ('file' or 'directory')
+     * @param content - The content for files (ignored for directories)
+     * @returns A promise that resolves to the created item data
+     * @throws Error if not connected or if the operation fails
      */
     public async createItem(path: string, type: 'file' | 'directory', content?: string): Promise<any> {
         if (!this.isConnected) {
@@ -224,124 +331,82 @@ export class JupyterHubConnection {
         }
         
         try {
+            // Check for unsupported item types
+            if (type !== 'file' && type !== 'directory') {
+                throw new Error(`Unsupported item type: ${type}`);
+            }
+            
             // Normalize path
             if (!path.startsWith('/')) {
                 path = `/${path}`;
             }
             
-            console.log(`Creating ${type} with EXACT name at: ${path}`);
+            // Log creation attempt
+            console.log(`Creating ${type} at path: ${path}`);
             
-            // DIRECTLY create the item at the exact path with PUT
+            // Create the item using PUT request - this works for both files and directories
+            // and ensures direct creation with the correct name
+            let requestData: any = {};
+            
             if (type === 'directory') {
-                const directoryData = {
+                // Directory creation
+                requestData = {
                     type: 'directory'
                 };
+            } else { // type === 'file'
+                // File creation
+                const isNotebook = path.endsWith('.ipynb');
                 
-                const response = await axios.put(`${this.apiBaseUrl}/contents${path}`, directoryData, {
-                    headers: {
-                        'Authorization': `token ${this.token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
-                });
-                
-                console.log(`Directory created successfully at exact path: ${path}`);
-                return response.data;
-            }
-            
-            // For files, use PUT directly to the path
-            if (type === 'file') {
-                // Get filename for content type handling
-                const fileName = path.substring(path.lastIndexOf('/') + 1);
-                
-                // Handle different file types
-                if (fileName.endsWith('.ipynb')) {
-                    // For notebooks, create with exact format required by Jupyter API
-                    console.log(`Creating notebook with PUT to exact path: ${path}`);
-                    
-                    const notebookData = {
-                        type: "notebook",
-                        content: {
-                            cells: [],
-                            metadata: {
-                                kernelspec: {
-                                    display_name: "Python 3",
-                                    language: "python",
-                                    name: "python3"
-                                },
-                                language_info: {
-                                    codemirror_mode: {
-                                        name: "ipython",
-                                        version: 3
-                                    },
-                                    file_extension: ".py",
-                                    mimetype: "text/x-python",
-                                    name: "python",
-                                    nbconvert_exporter: "python",
-                                    pygments_lexer: "ipython3",
-                                    version: "3.8.0"
-                                }
-                            },
-                            nbformat: 4,
-                            nbformat_minor: 5
-                        }
-                    };
-                    
-                    // Only use provided content if it's valid notebook JSON
-                    if (content) {
-                        try {
-                            const jsonContent = JSON.parse(content);
-                            if (jsonContent.cells && jsonContent.metadata && jsonContent.nbformat) {
-                                notebookData.content = jsonContent;
+                if (isNotebook) {
+                    // For notebook files, we need proper JSON structure
+                    // If content is provided, parse it, otherwise create empty notebook
+                    const notebookContent = content ? JSON.parse(content) : {
+                        cells: [],
+                        metadata: {
+                            kernelspec: {
+                                display_name: "Python 3",
+                                language: "python",
+                                name: "python3"
                             }
-                        } catch (e) {
-                            // Invalid JSON, already using default notebook template
-                        }
-                    }
-                    
-                    const response = await axios.put(`${this.apiBaseUrl}/contents${path}`, notebookData, {
-                        headers: {
-                            'Authorization': `token ${this.token}`,
-                            'Content-Type': 'application/json'
                         },
-                        timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
-                    });
-                    
-                    if (response.data && response.data.path) {
-                        console.log(`Notebook created successfully at: ${response.data.path}`);
-                    }
-                    
-                    return response.data;
-                } else {
-                    // Regular text files
-                    console.log(`Creating text file with PUT to exact path: ${path}`);
-                    
-                    const fileData = {
-                        type: "file",
-                        format: "text",
-                        content: content || ""
+                        nbformat: 4,
+                        nbformat_minor: 4
                     };
                     
-                    const response = await axios.put(`${this.apiBaseUrl}/contents${path}`, fileData, {
-                        headers: {
-                            'Authorization': `token ${this.token}`,
-                            'Content-Type': 'application/json'
-                        },
-                        timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
-                    });
-                    
-                    if (response.data && response.data.path) {
-                        console.log(`Text file created successfully at: ${response.data.path}`);
-                    }
-                    
-                    return response.data;
+                    requestData = {
+                        type: 'notebook',
+                        content: notebookContent,
+                        format: 'json'
+                    };
+                } else {
+                    // Regular text file
+                    requestData = {
+                        type: 'file',
+                        content: content || '',
+                        format: 'text'
+                    };
                 }
             }
             
-            throw new Error(`Unsupported item type: ${type}`);
+            // Make the PUT request
+            const response = await axios.put(`${this.apiBaseUrl}/contents${path}`, requestData, {
+                headers: {
+                    'Authorization': `token ${this.token}`,
+                    'Content-Type': 'application/json'
+                },
+                timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+            });
+            
+            if (response.status === 201 || response.status === 200) {
+                console.log(`Successfully created ${type} at path: ${path}`);
+                return response.data;
+            }
+            
+            throw new Error(`Failed to create ${type}`);
         } catch (error) {
             console.error(`Failed to create ${type} at path ${path}:`, error);
             
+            // Check for unauthorized error - likely invalid or expired token
             if (this.isCredentialError(error)) {
                 vscode.window.showErrorMessage('JupyterHub credentials are invalid or expired. Please reconnect with new credentials.');
                 this.isConnected = false;
@@ -350,20 +415,6 @@ export class JupyterHubConnection {
             } else if (this.isTimeoutError(error)) {
                 vscode.window.showErrorMessage(`Operation timed out. Please check your network connection and server status.`);
                 throw new Error('Connection timeout');
-            } else {
-                // Show detailed error message with response data
-                let errorMessage = "";
-                if (axios.isAxiosError(error) && error.response) {
-                    errorMessage = `${error.message} (Status: ${error.response.status}`;
-                    try {
-                        errorMessage += `, Data: ${JSON.stringify(error.response.data)})`;
-                    } catch (e) {
-                        errorMessage += ")";
-                    }
-                } else {
-                    errorMessage = error instanceof Error ? error.message : String(error);
-                }
-                vscode.window.showErrorMessage(`Failed to create ${type}: ${errorMessage}`);
             }
             
             throw new Error(`Failed to create ${type}: ${error instanceof Error ? error.message : String(error)}`);
@@ -371,7 +422,11 @@ export class JupyterHubConnection {
     }
     
     /**
-     * Save file content
+     * Saves content to an existing file on the JupyterHub server
+     * @param path - The path of the file to save
+     * @param content - The content to save
+     * @returns A promise that resolves to the saved file data
+     * @throws Error if not connected or if the operation fails
      */
     public async saveFile(path: string, content: string): Promise<any> {
         if (!this.isConnected) {
@@ -384,17 +439,12 @@ export class JupyterHubConnection {
                 path = `/${path}`;
             }
             
-            console.log(`Saving file ${path} with content length: ${content.length}`);
-            
             // For all files, we must use 'text' format for PUT requests
             const data: any = {
                 type: 'file',
                 content: content,
                 format: 'text'
             };
-            
-            // Log the request format for debugging
-            console.log(`PUT request to ${this.apiBaseUrl}/contents${path} using format: text`);
             
             const response = await axios.put(`${this.apiBaseUrl}/contents${path}`, data, {
                 headers: {
@@ -405,20 +455,11 @@ export class JupyterHubConnection {
             });
             
             if (response.status === 200 && response.data) {
-                console.log(`File ${path} saved successfully`);
                 return response.data;
             }
             
             throw new Error('Failed to save file');
         } catch (error) {
-            console.error(`Failed to save file at path ${path}:`, error);
-            
-            // Add more detailed error information for debugging
-            if (axios.isAxiosError(error) && error.response) {
-                console.error(`Response status: ${error.response.status}`);
-                console.error(`Response data:`, JSON.stringify(error.response.data));
-            }
-            
             // Check for unauthorized error - likely invalid or expired token
             if (this.isCredentialError(error)) {
                 vscode.window.showErrorMessage('JupyterHub credentials are invalid or expired. Please reconnect with new credentials.');
@@ -441,9 +482,81 @@ export class JupyterHubConnection {
     }
     
     /**
-     * Delete a file or directory
+     * Get children paths from a directory
+     * @param path - The path of the directory
+     * @returns A promise that resolves to an array of child paths
+     * @throws Error if not connected or if the operation fails
      */
-    public async deleteItem(path: string): Promise<boolean> {
+    public async getChildren(path: string): Promise<string[]> {
+        if (!this.isConnected) {
+            throw new Error('Not connected to JupyterHub server');
+        }
+        
+        try {
+            const contents = await this.listContents(path);
+            return contents.map(item => {
+                const itemPath = path === '/' ? `/${item.name}` : `${path}/${item.name}`;
+                return itemPath;
+            });
+        } catch (error) {
+            console.error(`Failed to get children for path ${path}:`, error);
+            throw new Error(`Failed to get children: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+    
+    /**
+     * Get metadata for an item
+     * @param path - The path of the item
+     * @returns A promise that resolves to the item metadata
+     * @throws Error if not connected or if the operation fails
+     */
+    public async getMetadata(path: string): Promise<any> {
+        if (!this.isConnected) {
+            throw new Error('Not connected to JupyterHub server');
+        }
+        
+        try {
+            // Normalize path
+            if (!path.startsWith('/')) {
+                path = `/${path}`;
+            }
+            
+            const response = await axios.get(`${this.apiBaseUrl}/contents${path}`, {
+                headers: {
+                    'Authorization': `token ${this.token}`
+                },
+                timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+            });
+            
+            if (response.status === 200 && response.data) {
+                return response.data;
+            }
+            
+            throw new Error('Failed to get metadata');
+        } catch (error) {
+            console.error(`Failed to get metadata for path ${path}:`, error);
+            
+            if (this.isCredentialError(error)) {
+                vscode.window.showErrorMessage('JupyterHub credentials are invalid or expired. Please reconnect with new credentials.');
+                this.isConnected = false;
+                vscode.commands.executeCommand('jupyterhub-remote-file-explorer.updateCredentials');
+                throw new Error('Invalid credentials');
+            } else if (this.isTimeoutError(error)) {
+                vscode.window.showErrorMessage(`Operation timed out. Please check your network connection and server status.`);
+                throw new Error('Connection timeout');
+            }
+            
+            throw new Error(`Failed to get metadata: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+    
+    /**
+     * Deletes a file or directory on the JupyterHub server
+     * @param path - The path of the item to delete
+     * @returns A promise that resolves when deletion is complete
+     * @throws Error if not connected or if the operation fails
+     */
+    public async deleteItem(path: string): Promise<void> {
         if (!this.isConnected) {
             throw new Error('Not connected to JupyterHub server');
         }
@@ -461,7 +574,9 @@ export class JupyterHubConnection {
                 timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
             });
             
-            return response.status === 204;
+            if (response.status !== 204) {
+                throw new Error('Failed to delete item');
+            }
         } catch (error) {
             console.error(`Failed to delete item at path ${path}:`, error);
             
@@ -481,14 +596,16 @@ export class JupyterHubConnection {
     }
     
     /**
-     * Check if the connection is active
+     * Checks if the connection to the JupyterHub server is active
+     * @returns True if connected, false otherwise
      */
     public isActive(): boolean {
         return this.isConnected;
     }
     
     /**
-     * Get server information
+     * Gets information about the connected server
+     * @returns Object containing server URL and username
      */
     public getServerInfo(): { serverUrl: string; username?: string } {
         return {
@@ -497,13 +614,22 @@ export class JupyterHubConnection {
         };
     }
 
-    // Helper to check if an API error is due to invalid credentials
-    private isCredentialError(error: any): boolean {
+    /**
+     * Checks if an error is related to invalid credentials
+     * @param error - The error to check
+     * @returns True if the error is credential-related, false otherwise
+     */
+    public isCredentialError(error: any): boolean {
         return axios.isAxiosError(error) && 
                (error.response?.status === 401 || error.response?.status === 403);
     }
     
-    private isTimeoutError(error: any): boolean {
+    /**
+     * Checks if an error is related to a connection timeout
+     * @param error - The error to check
+     * @returns True if the error is timeout-related, false otherwise
+     */
+    public isTimeoutError(error: any): boolean {
         return axios.isAxiosError(error) && 
                (error.code === 'ECONNABORTED' || error.message.includes('timeout'));
     }
