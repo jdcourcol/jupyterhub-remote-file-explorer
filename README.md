@@ -54,6 +54,7 @@ JupyterHub tokens can expire or become invalid over time. This extension will:
 - Provide status information about your connection in the status bar
 
 To manually update your credentials:
+
 - Click on the JupyterHub status indicator in the status bar
 - Select "Update Credentials" from the menu
 - Or use the "JupyterHub: Update Credentials" command from the Command Palette
@@ -70,7 +71,7 @@ Once connected:
 
 ### File Operations
 
-- **Creating files/folders**: 
+- **Creating files/folders**:
   - Click the "New File" or "New Folder" buttons in the explorer view
   - Right-click on a folder and select "New File" or "New Folder"
   
@@ -94,33 +95,20 @@ This extension contributes the following settings:
 - `jupyterhub.connectionTimeout`: Timeout in milliseconds for JupyterHub server connections (default: 10000)
 - `jupyterhub.allowSelfSignedCertificates`: Allow connections to servers with self-signed or invalid SSL certificates (disabled by default)
 
-### Certificate Verification
+## Known Limitations
 
-By default, this extension enforces SSL certificate validation when connecting to JupyterHub servers. This improves security but may prevent connections to servers with self-signed certificates.
-
-You can control this behavior with the `jupyterhub.allowSelfSignedCertificates` setting:
-
-- When `false` (default): Standard certificate validation applies, requiring valid SSL certificates signed by trusted certificate authorities
-- When `true`: Certificate validation is disabled, allowing connections to servers with self-signed certificates
-
-If you encounter SSL certificate errors when connecting:
-
-- You can enable the `jupyterhub.allowSelfSignedCertificates` setting to allow connections from self-signed or invalid certificates
-
-## Known Issues
-
-- Directory rename operations are not yet implemented
 - Watch functionality for real-time updates is limited by JupyterHub API
 
 ## Release Notes
 
-### 0.0.1
+### 1.0.4
 
 Initial release with:
 
 - Connection to JupyterHub servers
 - File system explorer
 - Basic file operations (create, edit, delete)
+- Support for self-signed certificates
 
 ## Contributing
 
