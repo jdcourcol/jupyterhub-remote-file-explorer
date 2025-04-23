@@ -17,6 +17,29 @@ export function activate(context: vscode.ExtensionContext) {
 		// Show activation notification that should be visible immediately
 		vscode.window.showInformationMessage('JupyterHub Explorer is activating...');
 		
+		// Add global error handlers for circular reference issues during stringification
+		const originalConsoleError = console.error;
+		console.error = function(...args) {
+			try {
+				// Safe stringification for arguments
+				const safeArgs = args.map(arg => {
+					if (typeof arg === 'object' && arg !== null) {
+						try {
+							JSON.stringify(arg);
+							return arg;
+						} catch (e) {
+							return '[Circular Reference]';
+						}
+					}
+					return arg;
+				});
+				originalConsoleError.apply(console, safeArgs);
+			} catch (e: unknown) {
+				const errorMessage = e instanceof Error ? e.message : String(e);
+				originalConsoleError.call(console, 'Error in error logging:', errorMessage);
+			}
+		};
+		
 		console.log(`Extension path: ${context.extensionPath}`);
 		console.log(`Global storage path: ${context.globalStorageUri?.fsPath || 'Not available'}`);
 		

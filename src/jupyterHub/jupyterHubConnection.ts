@@ -21,6 +21,48 @@ export class JupyterHubConnection {
     }
 
     /**
+     * Creates an HTTPS agent that accepts self-signed certificates when configured to do so
+     */
+    private getHttpsAgent() {
+        // Create a custom HTTPS agent 
+        const https = require('https');
+        
+        // Check if we should allow invalid certificates
+        const allowSelfSigned = vscode.workspace.getConfiguration('jupyterhub').get<boolean>('allowSelfSignedCertificates', true);
+        
+        // Log the certificate verification setting
+        console.log(`Certificate verification setting: allowSelfSignedCertificates=${allowSelfSigned}`);
+        
+        if (allowSelfSigned) {
+            // Use Node's built-in TLS options to bypass certificate validation when allowed
+            return new https.Agent({
+                rejectUnauthorized: false,
+                // Additional options to handle problematic certificate chains
+                checkServerIdentity: () => undefined, // Skip hostname checks
+                secureOptions: require('constants').SSL_OP_NO_TLSv1_2, // Try forcing TLS 1.3 or 1.1
+                maxVersion: 'TLSv1.3',
+                minVersion: 'TLSv1'
+            });
+        } else {
+            // Use default certificate validation behavior
+            return new https.Agent({
+                rejectUnauthorized: true
+            });
+        }
+    }
+
+    /**
+     * Safely stringifies an object, handling circular references
+     */
+    private safeStringify(obj: any): string {
+        try {
+            return JSON.stringify(obj);
+        } catch (error) {
+            return "[Cannot stringify - circular reference]";
+        }
+    }
+
+    /**
      * Connect to the JupyterHub server
      */
     public async connect(): Promise<boolean> {
@@ -37,24 +79,127 @@ export class JupyterHubConnection {
             // Get timeout from configuration
             const timeout = vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000);
             
+            // Check if we should allow invalid certificates
+            const allowSelfSigned = vscode.workspace.getConfiguration('jupyterhub').get<boolean>('allowSelfSignedCertificates', true);
+            
+            console.log(`Attempting to connect to JupyterHub server at ${this.serverUrl} with timeout ${timeout}ms, certificate verification is ${allowSelfSigned ? 'disabled' : 'enabled'}`);
+
+            // Disable Node.js certificate validation globally for this request if allowed
+            let originalTlsSetting;
+            if (allowSelfSigned) {
+                originalTlsSetting = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+                process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+            }
+            
             // Validate connection by getting user info
             const response = await axios.get(`${this.serverUrl}/hub/api/user`, {
                 headers: {
                     'Authorization': `token ${this.token}`
                 },
-                timeout: timeout
+                timeout: timeout,
+                // Configure HTTPS agent based on settings
+                httpsAgent: this.getHttpsAgent()
             });
             
             if (response.status === 200 && response.data) {
                 this.username = response.data.name;
                 this.apiBaseUrl = `${this.serverUrl}/user/${this.username}/api`;
                 this.isConnected = true;
+                console.log(`Successfully connected to JupyterHub as user: ${this.username}`);
+                console.log(`API base URL: ${this.apiBaseUrl}`);
+
+                // Reset NODE_TLS_REJECT_UNAUTHORIZED to its original value if changed
+                if (allowSelfSigned && originalTlsSetting !== undefined) {
+                    process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalTlsSetting;
+                }
+                
                 return true;
+            }
+            
+            // Reset NODE_TLS_REJECT_UNAUTHORIZED to its original value if changed
+            if (allowSelfSigned && originalTlsSetting !== undefined) {
+                process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalTlsSetting;
             }
             
             return false;
         } catch (error) {
+            // Check if we should allow invalid certificates 
+            const allowSelfSigned = vscode.workspace.getConfiguration('jupyterhub').get<boolean>('allowSelfSignedCertificates', true);
+            
+            // Reset NODE_TLS_REJECT_UNAUTHORIZED to its default value if it was changed
+            if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' && allowSelfSigned) {
+                process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+            }
+            
             console.error('Failed to connect to JupyterHub server:', error);
+            
+            // More detailed error logging
+            if (axios.isAxiosError(error)) {
+                console.error(`Axios Error Details:`);
+                console.error(`- Message: ${error.message}`);
+                console.error(`- Code: ${error.code}`);
+                console.error(`- Request URL: ${error.config?.url}`);
+                
+                if (error.response) {
+                    console.error(`- Status: ${error.response.status}`);
+                    console.error(`- Status Text: ${error.response.statusText}`);
+                    try {
+                        // Safely stringify response data
+                        const safeData = this.safeStringify(error.response.data);
+                        console.error(`- Response Data: ${safeData}`);
+                    } catch (jsonError) {
+                        console.error(`- Response Data: [Cannot stringify - circular reference]`);
+                    }
+                    
+                    try {
+                        // Only log basic header info to avoid circular references
+                        const safeHeaders: Record<string, string> = {};
+                        for (const [key, value] of Object.entries(error.response.headers)) {
+                            safeHeaders[key] = String(value);
+                        }
+                        console.error(`- Response Headers: ${this.safeStringify(safeHeaders)}`);
+                    } catch (jsonError) {
+                        console.error(`- Response Headers: [Cannot stringify - circular reference]`);
+                    }
+                } else if (error.request) {
+                    console.error('- No response received from server');
+                    console.error(`- Request details available but not logged to avoid circular reference`);
+                }
+                
+                // Add specific error message for certificate errors
+                if (error.message.includes('certificate') || error.message.includes('CERT_')) {
+                    console.error('- Certificate validation error detected.');
+                    if (allowSelfSigned) {
+                        console.error('- SSL certificate verification is already disabled, but the error persists.');
+                        vscode.window.showErrorMessage('SSL certificate error when connecting to JupyterHub server, even though certificate validation is disabled. There may be a network issue or proxy intercepting the connection.');
+                    } else {
+                        console.error('- Certificate verification is currently enabled. You can disable it in settings.');
+                        const action = await vscode.window.showErrorMessage(
+                            'SSL certificate validation error. This server may use a self-signed certificate.',
+                            'Disable Certificate Validation',
+                            'Open Settings',
+                            'Cancel'
+                        );
+                        
+                        if (action === 'Disable Certificate Validation') {
+                            // Update the setting
+                            await vscode.workspace.getConfiguration('jupyterhub').update(
+                                'allowSelfSignedCertificates',
+                                true,
+                                vscode.ConfigurationTarget.Global
+                            );
+                            vscode.window.showInformationMessage(
+                                'Certificate validation disabled. Please try connecting again.'
+                            );
+                        } else if (action === 'Open Settings') {
+                            await vscode.commands.executeCommand(
+                                'workbench.action.openSettings',
+                                'jupyterhub.allowSelfSignedCertificates'
+                            );
+                        }
+                    }
+                }
+            }
             
             // Check for unauthorized error - likely invalid or expired token
             if (this.isCredentialError(error)) {
@@ -96,7 +241,9 @@ export class JupyterHubConnection {
                 headers: {
                     'Authorization': `token ${this.token}`
                 },
-                timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+                timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000),
+                // Allow self-signed certificates
+                httpsAgent: this.getHttpsAgent()
             });
             
             if (response.status === 200 && response.data) {
@@ -106,6 +253,17 @@ export class JupyterHubConnection {
             return [];
         } catch (error) {
             console.error(`Failed to list contents at path ${path}:`, error);
+            
+            // More detailed error logging
+            if (axios.isAxiosError(error)) {
+                console.error(`Axios Error: ${error.message}`);
+                if (error.response) {
+                    console.error(`Status: ${error.response.status}`);
+                    console.error(`Data: ${this.safeStringify(error.response.data)}`);
+                } else if (error.request) {
+                    console.error('No response received from server');
+                }
+            }
             
             // Check for unauthorized error - likely invalid or expired token
             if (this.isCredentialError(error)) {
@@ -152,7 +310,9 @@ export class JupyterHubConnection {
                     params: {
                         content: 1
                     },
-                    timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+                    timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000),
+                    // Allow self-signed certificates
+                    httpsAgent: this.getHttpsAgent()
                 });
                 
                 if (response.status === 200 && response.data) {
@@ -173,7 +333,9 @@ export class JupyterHubConnection {
                         params: {
                             content: 1
                         },
-                        timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+                        timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000),
+                        // Allow self-signed certificates
+                        httpsAgent: this.getHttpsAgent()
                     });
                     
                     if (altResponse.status === 200 && altResponse.data) {
@@ -198,6 +360,17 @@ export class JupyterHubConnection {
             } else {
                 // Log other errors as actual errors
                 console.error(`Failed to get file content at path ${path}:`, error);
+                
+                // More detailed but safe error logging
+                if (axios.isAxiosError(error)) {
+                    console.error(`Axios Error: ${error.message}`);
+                    if (error.response) {
+                        console.error(`Status: ${error.response.status}`);
+                        console.error(`Data: ${this.safeStringify(error.response.data)}`);
+                    } else if (error.request) {
+                        console.error('No response received from server');
+                    }
+                }
             }
             
             // Check for unauthorized error - likely invalid or expired token
@@ -242,7 +415,9 @@ export class JupyterHubConnection {
                         'Authorization': `token ${this.token}`,
                         'Content-Type': 'application/json'
                     },
-                    timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+                    timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000),
+                    // Allow self-signed certificates
+                    httpsAgent: this.getHttpsAgent()
                 });
                 
                 console.log(`Directory created successfully at exact path: ${path}`);
@@ -304,7 +479,9 @@ export class JupyterHubConnection {
                             'Authorization': `token ${this.token}`,
                             'Content-Type': 'application/json'
                         },
-                        timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+                        timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000),
+                        // Allow self-signed certificates
+                        httpsAgent: this.getHttpsAgent()
                     });
                     
                     if (response.data && response.data.path) {
@@ -327,7 +504,9 @@ export class JupyterHubConnection {
                             'Authorization': `token ${this.token}`,
                             'Content-Type': 'application/json'
                         },
-                        timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+                        timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000),
+                        // Allow self-signed certificates
+                        httpsAgent: this.getHttpsAgent()
                     });
                     
                     if (response.data && response.data.path) {
@@ -356,7 +535,7 @@ export class JupyterHubConnection {
                 if (axios.isAxiosError(error) && error.response) {
                     errorMessage = `${error.message} (Status: ${error.response.status}`;
                     try {
-                        errorMessage += `, Data: ${JSON.stringify(error.response.data)})`;
+                        errorMessage += `, Data: ${this.safeStringify(error.response.data)})`;
                     } catch (e) {
                         errorMessage += ")";
                     }
@@ -401,7 +580,9 @@ export class JupyterHubConnection {
                     'Authorization': `token ${this.token}`,
                     'Content-Type': 'application/json'
                 },
-                timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+                timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000),
+                // Allow self-signed certificates
+                httpsAgent: this.getHttpsAgent()
             });
             
             if (response.status === 200 && response.data) {
@@ -416,7 +597,7 @@ export class JupyterHubConnection {
             // Add more detailed error information for debugging
             if (axios.isAxiosError(error) && error.response) {
                 console.error(`Response status: ${error.response.status}`);
-                console.error(`Response data:`, JSON.stringify(error.response.data));
+                console.error(`Response data:`, this.safeStringify(error.response.data));
             }
             
             // Check for unauthorized error - likely invalid or expired token
@@ -431,7 +612,7 @@ export class JupyterHubConnection {
             } else {
                 // Show detailed error message to help debug
                 const errorMessage = axios.isAxiosError(error) && error.response 
-                    ? `${error.message} (${error.response.status}: ${JSON.stringify(error.response.data)})`
+                    ? `${error.message} (${error.response.status}: ${this.safeStringify(error.response.data)})`
                     : `${error instanceof Error ? error.message : String(error)}`;
                 vscode.window.showErrorMessage(`Failed to save file: ${errorMessage}`);
             }
@@ -458,12 +639,25 @@ export class JupyterHubConnection {
                 headers: {
                     'Authorization': `token ${this.token}`
                 },
-                timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000)
+                timeout: vscode.workspace.getConfiguration('jupyterhub').get<number>('connectionTimeout', 10000),
+                // Allow self-signed certificates
+                httpsAgent: this.getHttpsAgent()
             });
             
             return response.status === 204;
         } catch (error) {
             console.error(`Failed to delete item at path ${path}:`, error);
+            
+            // More detailed but safe error logging
+            if (axios.isAxiosError(error)) {
+                console.error(`Axios Error: ${error.message}`);
+                if (error.response) {
+                    console.error(`Status: ${error.response.status}`);
+                    console.error(`Data: ${this.safeStringify(error.response.data)}`);
+                } else if (error.request) {
+                    console.error('No response received from server');
+                }
+            }
             
             // Check for unauthorized error - likely invalid or expired token
             if (this.isCredentialError(error)) {

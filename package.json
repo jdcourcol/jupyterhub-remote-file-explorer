@@ -156,6 +156,11 @@
           "type": "number",
           "default": 10000,
           "description": "Timeout (in milliseconds) for JupyterHub server connections"
+        },
+        "jupyterhub.allowSelfSignedCertificates": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow connections to servers with self-signed or invalid SSL certificates"
         }
       }
     }
