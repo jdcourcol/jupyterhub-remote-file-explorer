@@ -175,6 +175,7 @@
     "compile": "webpack",
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
+    "build-prod": "webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run lint",
@@ -212,34 +213,5 @@
   },
   "dependencies": {
     "axios": "^1.8.4"
-  },
-  "jest": {
-    "preset": "ts-jest",
-    "testEnvironment": "node",
-    "moduleFileExtensions": [
-      "ts",
-      "js"
-    ],
-    "transform": {
-      "^.+\\.ts$": "ts-jest"
-    },
-    "testMatch": [
-      "**/test/**/*.test.ts"
-    ],
-    "coverageReporters": [
-      "json",
-      "lcov",
-      "text",
-      "cobertura"
-    ],
-    "collectCoverageFrom": [
-      "src/**/*.ts",
-      "!src/test/**/*.ts"
-    ],
-    "globals": {
-      "ts-jest": {
-        "tsconfig": "tsconfig.json"
-      }
-    }
   }
 }
