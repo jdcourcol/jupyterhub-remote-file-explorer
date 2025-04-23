@@ -5,8 +5,8 @@
   "author": {
     "name": "Jonathan Adams"
   },
-  "description": "Displays the file system for a remote JupyterHub server and allows you to interact with objects directly from VSCode",
-  "version": "1.0.4",
+  "description": "Provides a remote file explorer for JupyterHub servers, allowing you to interact with files and directories directly from VSCode",
+  "version": "1.0.5",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -54,6 +54,7 @@ JupyterHub tokens can expire or become invalid over time. This extension will:
 - Provide status information about your connection in the status bar
 
 To manually update your credentials:
+
 - Click on the JupyterHub status indicator in the status bar
 - Select "Update Credentials" from the menu
 - Or use the "JupyterHub: Update Credentials" command from the Command Palette
@@ -70,7 +71,7 @@ Once connected:
 
 ### File Operations
 
-- **Creating files/folders**: 
+- **Creating files/folders**:
   - Click the "New File" or "New Folder" buttons in the explorer view
   - Right-click on a folder and select "New File" or "New Folder"
   
@@ -92,21 +93,22 @@ This extension contributes the following settings:
 
 - `jupyterhub.autoConnect`: Enable/disable automatic connection to the last used JupyterHub server on startup (disabled by default)
 - `jupyterhub.connectionTimeout`: Timeout in milliseconds for JupyterHub server connections (default: 10000)
+- `jupyterhub.allowSelfSignedCertificates`: Allow connections to servers with self-signed or invalid SSL certificates (disabled by default)
 
-## Known Issues
+## Known Limitations
 
-- Directory rename operations are not yet implemented
 - Watch functionality for real-time updates is limited by JupyterHub API
 
 ## Release Notes
 
-### 0.0.1
+### 1.0.4
 
 Initial release with:
 
 - Connection to JupyterHub servers
 - File system explorer
 - Basic file operations (create, edit, delete)
+- Support for self-signed certificates
 
 ## Contributing
 
