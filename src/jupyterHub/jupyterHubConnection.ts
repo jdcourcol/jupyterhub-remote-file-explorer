@@ -214,7 +214,22 @@ export class JupyterHubConnection implements JupyterHubConnectionInterface {
 
       if (response.status === 200 && response.data) {
         this.username = response.data.name;
-        this.apiBaseUrl = `${this.serverUrl}/user/${this.username}/api`;
+
+        // JupyterHub named servers expose their complete route in the user model.
+        const servers = response.data.servers as
+          | Record<string, { url?: string; ready?: boolean }>
+          | undefined;
+        const serverEntries = servers ? Object.values(servers) : [];
+        const activeServer =
+          serverEntries.find(server => server.ready && server.url) ||
+          serverEntries.find(server => server.url);
+
+        if (activeServer?.url) {
+          const serverUrl = new URL(activeServer.url, `${this.serverUrl}/`);
+          this.apiBaseUrl = `${serverUrl.toString().replace(/\/$/, '')}/api`;
+        } else {
+          this.apiBaseUrl = `${this.serverUrl}/user/${this.username}/api`;
+        }
         this.isConnected = true;
 
         // Reset NODE_TLS_REJECT_UNAUTHORIZED to its original value if changed

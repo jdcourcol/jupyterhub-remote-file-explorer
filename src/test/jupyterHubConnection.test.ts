@@ -205,6 +205,40 @@ describe('JupyterHubConnection', () => {
     });
   });
 
+  describe('connect', () => {
+    it('uses the URL of a ready named server', async () => {
+      connection['isConnected'] = false;
+      mockedAxios.get.mockResolvedValueOnce({
+        status: 200,
+        data: {
+          name: username,
+          servers: {
+            'server-id': {
+              ready: true,
+              url: `/user/${username}/server-id/`,
+            },
+          },
+        },
+      } as any);
+
+      await expect(connection.connect()).resolves.toBe(true);
+
+      expect(connection['apiBaseUrl']).toBe(`${serverUrl}/user/${username}/server-id/api`);
+    });
+
+    it('falls back to the default server URL when no server URL is returned', async () => {
+      connection['isConnected'] = false;
+      mockedAxios.get.mockResolvedValueOnce({
+        status: 200,
+        data: { name: username },
+      } as any);
+
+      await expect(connection.connect()).resolves.toBe(true);
+
+      expect(connection['apiBaseUrl']).toBe(`${serverUrl}/user/${username}/api`);
+    });
+  });
+
   describe('createItem', () => {
     it('should create a file using PUT request', async () => {
       const path = '/testdir/newfile.txt';
