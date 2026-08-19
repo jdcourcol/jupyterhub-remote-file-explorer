@@ -8,7 +8,6 @@
 src/**
 out/**
 node_modules/**
-.npm-cache/**
 tsconfig.json
 webpack.config.js
 jest.config.js
@@ -28,6 +27,7 @@ npm-debug.log
 
 # Include dist folder
 !dist/**
+!node_modules/**
 
 # Include necessary docs
 !README.md
